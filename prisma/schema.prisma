@@ -1,0 +1,473 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================================================
+// ENUMS DEL SISTEMA (Reglas de Negocio EPB)
+// =========================================================
+
+enum UserRole {
+  ADMIN
+  ASESOR
+  VENTA
+  CONTABILIDAD
+  PROFESOR
+}
+
+enum AttendanceStatus {
+  PRESENTE
+  AUSENTE
+  REPROGRAMADO
+}
+
+enum FineStatus {
+  PENDIENTE
+  PAGADA
+  ANULADA
+}
+
+enum CertificateStatus {
+  PENDIENTE_VALIDACION
+  APROBADO
+  EMITIDO
+  BLOQUEADO_POR_DEUDA
+}
+
+enum StaffLogType {
+  ENTRADA
+  SALIDA
+}
+
+enum ClientProtectionStatus {
+  PROTEGIDO_3_DIAS          // Día 1 a 3: venta asignada al Vendedor A
+  LIBERADO_DIA_4            // Día 4: liberado sin atención previa
+  SEGUNDA_OPORTUNIDAD_24H   // Atendido por segundo vendedor
+  LIBRE_DEFINITIVO          // Pasadas 24h sin cierre en 2da atención
+  VENTA_CERRADA             // Venta concretada
+}
+
+enum SaleStatus {
+  COMPLETADA
+  ANULADA
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  MIXTO
+}
+
+// =========================================================
+// A. SEGURIDAD, USUARIOS, PERSONAL Y AUDITORÍA
+// =========================================================
+
+model User {
+  id                  String   @id @default(cuid())
+  documentId          String   @unique
+  fullName            String
+  email               String?  @unique
+  phone               String?
+  role                UserRole
+  accessCode          String   @unique // Código personal único de ingreso
+  sellerSecretCode    String?  @unique // Código secreto de vendedor para preventas
+  fingerprintTemplate String?  @unique // Hash/Template biométrico USB
+  hourlyRateCop       Int       @default(0) // Tarifa por hora en COP para nómina quincenal
+  commissionRatePct   Float     @default(5.0) // % de comisión para vendedores
+  isTemporaryGuest    Boolean   @default(false) // true si es invitado/contador temporal
+  accessExpiresAt     DateTime? // Fecha/hora límite de acceso para Contabilidad/Invitado
+  isActive            Boolean   @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relaciones
+  taughtSchedules       ClassSchedule[]            @relation("TeacherSchedules")
+  staffTimeLogs         StaffTimeLog[]
+  payrollAdjustments    StaffPayrollAdjustment[]
+  fortnightSettlements  StaffFortnightSettlement[]
+  initialPresales       ClientPresale[]            @relation("InitialSellerPresales")
+  secondChancePresales  ClientPresale[] @relation("SecondSellerPresales")
+  closedSales           Sale[]          @relation("ClosingSellerSales")
+  commissionedSales     Sale[]          @relation("CommissionedSellerSales")
+  commissions           Commission[]
+  collectedFines        Fine[]          @relation("CollectedFines")
+  studentPaymentsCollected StudentPayment[] @relation("StudentPaymentsCollected")
+  auditLogs             AuditLog[]
+
+  @@index([role, isActive])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String
+  action       String
+  entity       String
+  entityId     String
+  previousData Json?
+  newData      Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// =========================================================
+// B. SALONES Y AGENDAS POR SALÓN
+// =========================================================
+
+model Room {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  capacity    Int      @default(15)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  schedules ClassSchedule[]
+}
+
+model ClassSchedule {
+  id                  String    @id @default(cuid())
+  roomId              String
+  teacherId           String
+  title               String
+  courseName          String
+  startTime           DateTime
+  endTime             DateTime
+  maxStudents         Int       @default(15)
+  notes               String?
+  isActive            Boolean   @default(true)
+  deactivationReason  String?
+  deactivatedByName   String?
+  deactivatedAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  room        Room                @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  teacher     User                @relation("TeacherSchedules", fields: [teacherId], references: [id], onDelete: Restrict)
+  enrollments StudentEnrollment[]
+  attendances Attendance[]
+  fines       Fine[]              @relation("MissedScheduleFines")
+  rescheduled Fine[]              @relation("RescheduledScheduleFines")
+
+  @@index([roomId, startTime])
+  @@index([teacherId, startTime])
+}
+
+model StudentEnrollment {
+  id         String   @id @default(cuid())
+  scheduleId String
+  studentId  String
+  enrolledAt DateTime @default(now())
+
+  schedule ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  student  Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, studentId])
+}
+
+// =========================================================
+// C. ESTUDIANTES, ASISTENCIA POR HUELLA, MULTAS Y CERTIFICADOS
+// =========================================================
+
+model Student {
+  id                  String   @id @default(cuid())
+  documentId          String   @unique
+  fullName            String
+  phone               String
+  email               String?
+  programName         String
+  fingerprintTemplate String?  @unique
+  isBlocked           Boolean  @default(false) // true si tiene multa pendiente o clase sin reprogramar
+  blockReason         String?
+  pendingBalanceCop   Int      @default(0)     // Saldo académico pendiente en COP
+  pendingBalanceReason String?                 // Motivo/concepto de la deuda (ej: Cuota 3 de matrícula, Kit)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  enrollments  StudentEnrollment[]
+  attendances  Attendance[]
+  fines        Fine[]
+  payments     StudentPayment[]
+  certificates Certificate[]
+
+  @@index([isBlocked])
+  @@index([documentId])
+}
+
+model Attendance {
+  id                 String           @id @default(cuid())
+  studentId          String
+  scheduleId         String
+  status             AttendanceStatus @default(PRESENTE)
+  verifiedByBiometry Boolean          @default(false)
+  checkInTime        DateTime         @default(now())
+  notes              String?
+  createdAt          DateTime         @default(now())
+
+  student  Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  schedule ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  fine     Fine?
+
+  @@unique([studentId, scheduleId])
+  @@index([scheduleId, status])
+}
+
+model Fine {
+  id                    String     @id @default(cuid())
+  studentId             String
+  attendanceId          String?    @unique
+  missedScheduleId      String
+  rescheduledScheduleId String?
+  amountCop             Int        @default(40000) // Multa obligatoria $40.000 COP
+  status                FineStatus @default(PENDIENTE)
+  isClassRescheduled    Boolean    @default(false)
+  paidAt                DateTime?
+  paymentReference      String?
+  paymentMethod         PaymentMethod @default(EFECTIVO)
+  collectedByUserId     String?
+  reason                String     @default("Inasistencia a clase programada")
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  student             Student        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  attendance          Attendance?    @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+  missedSchedule      ClassSchedule  @relation("MissedScheduleFines", fields: [missedScheduleId], references: [id], onDelete: Restrict)
+  rescheduledSchedule ClassSchedule? @relation("RescheduledScheduleFines", fields: [rescheduledScheduleId], references: [id], onDelete: SetNull)
+  collectedByUser     User?          @relation("CollectedFines", fields: [collectedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, status])
+}
+
+model StudentPayment {
+  id               String        @id @default(cuid())
+  studentId        String
+  amountCop        Int
+  concept          String        @default("Abono a saldo académico")
+  paymentMethod    PaymentMethod @default(EFECTIVO)
+  paymentReference String?
+  receiptNumber    String?
+  notes            String?
+  operatorUserId   String?
+  createdAt        DateTime      @default(now())
+
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  operatorUser User?   @relation("StudentPaymentsCollected", fields: [operatorUserId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([createdAt])
+}
+
+model Certificate {
+  id                String            @id @default(cuid())
+  certificateCode   String            @unique
+  studentId         String
+  programName       String
+  totalHours        Int               @default(120)
+  status            CertificateStatus @default(PENDIENTE_VALIDACION)
+  hasFinancialAlert Boolean           @default(false)
+  alertDetails      String?
+  issuedAt          DateTime?
+  authorizedById    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([studentId, status])
+}
+
+// =========================================================
+// D. PERSONAL DE PLANTA Y HORAS QUINCENALES
+// =========================================================
+
+model StaffTimeLog {
+  id                   String       @id @default(cuid())
+  staffId              String
+  checkInAt            DateTime     @default(now())
+  checkOutAt           DateTime?
+  workedMinutes        Int          @default(0)
+  lunchDeductedMinutes Int          @default(0) // Minutos descontados por hora de almuerzo (ej: 60)
+  workedHoursDecimal   Float        @default(0)
+  verifiedByBiometry   Boolean      @default(true)
+  fortnightKey         String       // Ej: "2026-11-Q1" (1-15) o "2026-11-Q2" (16-fin)
+  notes                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  staff User @relation(fields: [staffId], references: [id], onDelete: Restrict)
+
+  @@index([staffId, fortnightKey])
+  @@index([checkInAt])
+}
+
+model StaffPayrollAdjustment {
+  id           String   @id @default(cuid())
+  staffId      String
+  fortnightKey String   // Ej: "2026-11-Q1"
+  type         String   // "BONO" | "ADELANTO" | "DESCUENTO"
+  concept      String
+  amountCop    Int
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  staff User @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, fortnightKey])
+}
+
+model StaffFortnightSettlement {
+  id               String    @id @default(cuid())
+  staffId          String
+  fortnightKey     String    // Ej: "2026-11-Q1"
+  status           String    @default("PENDIENTE") // "PENDIENTE" | "PAGADA"
+  paidAmountCop    Int       @default(0)
+  paymentMethod    String    @default("TRANSFERENCIA") // "EFECTIVO" | "NEQUI" | "BANCOLOMBIA" | "DAVIPLATA" | "TRANSFERENCIA"
+  paymentReference String?
+  paidAt           DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  staff User @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, fortnightKey])
+  @@index([fortnightKey, status])
+}
+
+// =========================================================
+// E. TIENDA, ESCÁNER DE BARRAS Y ALERTAS DE STOCK (< 20)
+// =========================================================
+
+model Product {
+  id          String   @id @default(cuid())
+  barcode     String   @unique // Código de barras para escáner USB
+  sku         String   @unique
+  name        String
+  category    String
+  priceCop    Int
+  costCop      Int      @default(0)
+  stock        Int      @default(0)
+  baseStock    Int      @default(50) // Capacidad Tope 100% de referencia
+  alertPercent Int      @default(30) // Porcentaje límite de aviso configurable (por defecto 30%)
+  minStock     Int      @default(15) // Unidades equivalentes al límite de aviso
+  isActive     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  saleItems SaleItem[]
+
+  @@index([barcode])
+  @@index([stock])
+}
+
+// =========================================================
+// F. PREVENTAS, PROTECCIÓN DE CLIENTES Y COMISIONES
+// =========================================================
+
+model ClientPresale {
+  id                    String                 @id @default(cuid())
+  clientDocument        String                 @unique
+  clientName            String
+  clientPhone           String
+  clientEmail           String?
+  interestedCourseOrItem String
+  status                ClientProtectionStatus @default(PROTEGIDO_3_DIAS)
+
+  // Vendedor inicial (Ventana de 3 días)
+  initialSellerId       String
+  initialAttentionAt    DateTime               @default(now())
+  protectedUntilDay3    DateTime               // initialAttentionAt + 3 días
+
+  // Segunda atención al 4to día (Ventana de 24 horas)
+  secondSellerId        String?
+  secondAttentionAt     DateTime?
+  secondWindowUntil24h  DateTime?              // secondAttentionAt + 24 horas
+
+  releasedToFreeAt      DateTime?
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  initialSeller User   @relation("InitialSellerPresales", fields: [initialSellerId], references: [id], onDelete: Restrict)
+  secondSeller  User?  @relation("SecondSellerPresales", fields: [secondSellerId], references: [id], onDelete: SetNull)
+  sales         Sale[]
+
+  @@index([clientDocument])
+  @@index([status])
+  @@index([initialSellerId])
+}
+
+model Sale {
+  id                   String        @id @default(cuid())
+  invoiceNumber        String        @unique
+  presaleId            String?
+  clientName           String
+  clientDocument       String?
+  closingSellerId      String        // Vendedor que facturó físicamente
+  commissionedSellerId String        // Vendedor que recibe la comisión según regla de 3 días / 4to día / 24h
+  protectionRuleApplied String       // Explicación de por qué se asignó la comisión
+  subtotalCop          Int
+  discountCop          Int           @default(0)
+  totalCop             Int
+  commissionAmountCop  Int
+  paymentMethod        PaymentMethod @default(EFECTIVO)
+  status               SaleStatus    @default(COMPLETADA)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  presale            ClientPresale? @relation(fields: [presaleId], references: [id], onDelete: SetNull)
+  closingSeller      User           @relation("ClosingSellerSales", fields: [closingSellerId], references: [id], onDelete: Restrict)
+  commissionedSeller User           @relation("CommissionedSellerSales", fields: [commissionedSellerId], references: [id], onDelete: Restrict)
+  items              SaleItem[]
+  commission         Commission?
+
+  @@index([commissionedSellerId, createdAt])
+  @@index([status])
+}
+
+model SaleItem {
+  id          String @id @default(cuid())
+  saleId      String
+  productId   String
+  quantity    Int
+  unitPriceCop Int
+  subtotalCop Int
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Commission {
+  id            String   @id @default(cuid())
+  saleId        String   @unique
+  sellerId      String
+  monthKey      String   // Ej: "2026-11" para reporte mensual consolidado
+  saleTotalCop  Int
+  percentage    Float
+  amountCop     Int
+  ruleApplied   String
+  isLiquidated  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  sale   Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([sellerId, monthKey])
+}

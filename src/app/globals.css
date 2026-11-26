@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 13%;
+    --primary: 0 0% 13%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 332 48% 88%;
+    --secondary-foreground: 0 0% 13%;
+    --muted: 210 17% 98%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 332 48% 88%;
+    --accent-foreground: 0 0% 13%;
+    --destructive: 0 78% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 332 25% 90%;
+    --input: 332 25% 88%;
+    --ring: 0 0% 13%;
+    --radius: 0.875rem;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 335 35% 95%;
+    --card: 0 0% 11%;
+    --card-foreground: 335 35% 95%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 335 35% 95%;
+    --primary: 335 45% 86%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 335 45% 86%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 335 35% 22%;
+    --accent-foreground: 335 45% 86%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 335 20% 24%;
+    --input: 335 20% 22%;
+    --ring: 335 45% 86%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[#F8F9FA] text-[#222222] antialiased selection:bg-[#ECCCD9] selection:text-[#141213] transition-colors duration-200;
+    background-image:
+      radial-gradient(at 0% 0%, rgba(236, 204, 217, 0.28) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(228, 189, 208, 0.22) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  html.dark body {
+    @apply bg-[#121011] text-[#F5EBF0];
+    background-image:
+      radial-gradient(at 0% 0%, rgba(236, 204, 217, 0.07) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(190, 24, 93, 0.08) 0px, transparent 50%);
+  }
+}
+
+/* Superficies oscuras en Modo Oscuro */
+html.dark .bg-white,
+html.dark .bg-white\/95,
+html.dark .bg-white\/90,
+html.dark .bg-white\/80,
+html.dark .bg-white\/60 {
+  background-color: #1B181A !important;
+  color: #F5EBF0 !important;
+}
+
+html.dark .bg-\[\#F8F9FA\],
+html.dark .bg-\[\#FAF0F5\],
+html.dark .bg-\[\#FAF0F5\]\/40,
+html.dark .bg-\[\#FAF0F5\]\/50,
+html.dark .bg-\[\#FAF0F5\]\/60,
+html.dark .bg-\[\#FAF0F5\]\/70,
+html.dark .bg-\[\#F9EFF3\],
+html.dark .bg-\[\#F9EFF3\]\/50,
+html.dark .bg-\[\#F9EFF3\]\/70 {
+  background-color: #241F22 !important;
+  color: #F5EBF0 !important;
+}
+
+/* Gradientes claros que en Modo Oscuro deben ser oscuros para que la letra clara se lea perfecto */
+html.dark .from-\[\#FAF0F5\],
+html.dark .from-\[\#F9EFF3\] {
+  --tw-gradient-from: #251F22 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: #1B181A var(--tw-gradient-to-position) !important;
+}
+
+html.dark .to-white {
+  --tw-gradient-to: #1B181A var(--tw-gradient-to-position) !important;
+}
+
+/* Textos generales en Modo Oscuro */
+html.dark .text-\[\#1A1A1A\],
+html.dark .text-\[\#1A1919\],
+html.dark .text-\[\#222222\],
+html.dark .text-\[\#232222\] {
+  color: #F7EDF2;
+}
+
+html.dark .text-neutral-700,
+html.dark .text-neutral-600,
+html.dark .text-neutral-500 {
+  color: #C7B8C0;
+}
+
+/* REGLA CRÍTICA DE CONTRASTE: Cualquier botón, badge o tarjeta con fondo Rosa Pastel (#ECCCD9 / #F0D0DF)
+   SIEMPRE debe tener texto e íconos en Negro Carbón (#141213) tanto en Modo Claro como en Modo Oscuro */
+.epb-pink-surface,
+.epb-pink-surface *,
+.bg-\[\#ECCCD9\],
+.bg-\[\#ECCCD9\] *,
+.bg-\[\#F0D0DF\],
+.bg-\[\#F0D0DF\] * {
+  color: #141213 !important;
+}
+
+html.dark .border-neutral-200,
+html.dark .border-neutral-100,
+html.dark .border-\[\#EBC8D8\],
+html.dark .border-\[\#E4BDD0\],
+html.dark .border-\[\#ECCCD9\],
+html.dark .border-\[\#EBC8D8\]\/60,
+html.dark .border-\[\#EBC8D8\]\/70,
+html.dark .border-\[\#EBC8D8\]\/80 {
+  border-color: #382F34 !important;
+}
+
+html.dark input,
+html.dark select {
+  background-color: #262124 !important;
+  color: #F7EDF2 !important;
+  border-color: #42373C !important;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FAF0F5;
+}
+::-webkit-scrollbar-thumb {
+  background: #ECCCD9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #232222;
+}

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: epb_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-epb_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epb_secret_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-epb_database}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - epb_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-epb_admin} -d ${POSTGRES_DB:-epb_database}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  epb_postgres_data:
