@@ -48,4 +48,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "prisma db push --accept-data-loss && node server.js"]
+CMD ["sh", "-c", "export DATABASE_URL=$(echo \"$DATABASE_URL\" | tr -d '[:space:]'); if [ -n \"$DATABASE_URL\" ]; then prisma db push --accept-data-loss || true; else echo 'WARN: DATABASE_URL is not set in environment'; fi && node server.js"]
