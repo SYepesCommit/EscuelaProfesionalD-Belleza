@@ -34,43 +34,11 @@ interface BiometricAccessScreenProps {
 const ROLE_QUICK_CARDS = [
   {
     role: 'ADMIN',
-    title: 'Administrador General',
-    subtitle: 'Dra. Valentina Montoya',
+    title: 'Administrador',
+    subtitle: 'Santiago Yepes',
     template: 'FP_ADMIN_01',
-    permissions: 'Control total, usuarios, biometría y auditoría forense',
+    permissions: 'Control total, creación de usuarios, biometría y auditoría forense',
     icon: UserCog,
-  },
-  {
-    role: 'ASESOR',
-    title: 'Asesor Académico',
-    subtitle: 'Mariana Gómez',
-    template: 'FP_ASESOR_01',
-    permissions: 'Agendas por salón, alumnas, multas ($40k) y asistencia',
-    icon: UserCheck,
-  },
-  {
-    role: 'VENTA',
-    title: 'Ejecutiva de Venta (POS)',
-    subtitle: 'Laura Ríos (Vendedora A)',
-    template: 'FP_VENTA_01',
-    permissions: 'Inventario, preventas (3d / 24h), caja con escáner y comisiones',
-    icon: Store,
-  },
-  {
-    role: 'VENTA',
-    title: 'Ejecutiva de Venta (POS B)',
-    subtitle: 'Camila Salazar (Vendedora B)',
-    template: 'FP_VENTA_02',
-    permissions: 'Ventas mostrador, segunda atención al 4to día y caja registradora',
-    icon: Store,
-  },
-  {
-    role: 'CONTABILIDAD',
-    title: 'Contabilidad / Invitado',
-    subtitle: 'Dr. Ricardo Castaño (Pase Temporal)',
-    template: 'FP_CONTA_01',
-    permissions: 'Reportes financieros, nómina quincenal y auditoría',
-    icon: Calculator,
   },
 ];
 

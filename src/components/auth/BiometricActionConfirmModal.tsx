@@ -39,31 +39,10 @@ interface BiometricActionConfirmModalProps {
 const DEMO_STAFF_FINGERPRINTS = [
   {
     role: 'ADMIN',
-    name: 'Dra. Valentina Montoya (Directora)',
+    name: 'Santiago Yepes (Administrador)',
     template: 'FP_ADMIN_01',
-    badge: 'Administradora / Supervisora',
+    badge: 'Administrador General',
     code: 'SEC-ADMIN',
-  },
-  {
-    role: 'VENTA',
-    name: 'Laura Ríos (Ejecutiva A)',
-    template: 'FP_VENTA_01',
-    badge: 'Caja & Ventas A',
-    code: 'LAURA-777',
-  },
-  {
-    role: 'VENTA',
-    name: 'Camila Salazar (Ejecutiva B)',
-    template: 'FP_VENTA_02',
-    badge: 'Caja & Ventas B',
-    code: 'CAMILA-888',
-  },
-  {
-    role: 'ASESOR',
-    name: 'Mariana Gómez (Asesora Académica)',
-    template: 'FP_ASESOR_01',
-    badge: 'Asesora & Coordinadora',
-    code: 'SEC-ASESOR',
   },
 ];
 
