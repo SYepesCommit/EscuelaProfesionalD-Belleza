@@ -17,6 +17,8 @@ export function useFingerprint(options?: UseFingerprintOptions) {
     process.env.NEXT_PUBLIC_FINGERPRINT_WS_URL || 'ws://localhost:8080';
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const [state, setState] = useState<FingerprintReaderState>({
     isConnected: false,
@@ -59,11 +61,11 @@ export function useFingerprint(options?: UseFingerprintOptions) {
           }));
 
           if (parsed.event === 'CAPTURE_SUCCESS' && parsed.template) {
-            options?.onCaptureSuccess?.(parsed.template);
+            optionsRef.current?.onCaptureSuccess?.(parsed.template);
           }
 
           if (parsed.event === 'MATCH_FOUND') {
-            options?.onMatchFound?.(parsed);
+            optionsRef.current?.onMatchFound?.(parsed);
           }
         } catch {
           setState((prev) => ({
@@ -100,10 +102,12 @@ export function useFingerprint(options?: UseFingerprintOptions) {
         error: 'No se pudo inicializar conexión WebSocket con huellero',
       }));
     }
-  }, [options, wsUrl]);
+  }, [wsUrl]);
+
+  const autoConnect = options?.autoConnect !== false;
 
   useEffect(() => {
-    if (options?.autoConnect !== false) {
+    if (autoConnect) {
       connect();
     }
     return () => {
@@ -112,7 +116,7 @@ export function useFingerprint(options?: UseFingerprintOptions) {
       }
       wsRef.current?.close();
     };
-  }, [connect, options?.autoConnect]);
+  }, [connect, autoConnect]);
 
   const requestScan = useCallback(() => {
     setState((prev) => ({ ...prev, isScanning: true, error: null }));
@@ -133,9 +137,9 @@ export function useFingerprint(options?: UseFingerprintOptions) {
         lastTemplate: simulatedTemplate,
         error: null,
       }));
-      options?.onCaptureSuccess?.(simulatedTemplate);
+      optionsRef.current?.onCaptureSuccess?.(simulatedTemplate);
     },
-    [options]
+    []
   );
 
   return {
