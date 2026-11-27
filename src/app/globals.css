@@ -50,6 +50,9 @@
 }
 
 @layer base {
+  html {
+    font-size: 17px;
+  }
   * {
     @apply border-border;
   }
@@ -172,7 +175,24 @@ html:not(.dark) .text-\[\#222222\] {
    aprovecha el 100% del ancho de pantalla, agranda áreas táctiles y usa
    números tabulares de lectura rápida.
    ============================================================================ */
+/* Escalado suave de micro-etiquetas para mayor legibilidad en toda la app */
+.text-\[9px\] {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+
+.text-\[10px\] {
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+
+.text-\[11px\] {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
 html.pos-touch-mode {
+  font-size: 17.5px;
   font-variant-numeric: tabular-nums;
 }
 

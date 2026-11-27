@@ -34,11 +34,21 @@ interface CashRegisterModalProps {
 interface CashRegisterData {
   date: string;
   summary: {
+    openingBaseCop?: number;
+    collectedCashCop?: number;
+    outflowsTotalCop?: number;
     expectedCashCop: number;
     expectedTransfCop: number;
     expectedCardCop: number;
     grandTotalCop: number;
   };
+  outflowsList?: Array<{
+    id: string;
+    amountCop: number;
+    concept: string;
+    authorizedBy: string;
+    createdAt: string;
+  }>;
   breakdown: {
     sales: {
       count: number;
@@ -83,6 +93,9 @@ export function CashRegisterModal({
   const [data, setData] = useState<CashRegisterData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [physicalCashCop, setPhysicalCashCop] = useState<number>(0);
+  const [openingBaseInputCop, setOpeningBaseInputCop] = useState<number>(0);
+  const [outflowAmountCop, setOutflowAmountCop] = useState<number>(0);
+  const [outflowConcept, setOutflowConcept] = useState<string>('');
   const [closureNotes, setClosureNotes] = useState('');
   const [closureResult, setClosureResult] = useState<{
     statusText: string;
@@ -102,6 +115,7 @@ export function CashRegisterModal({
       const json = await res.json();
       setData(json);
       setPhysicalCashCop(json.summary.expectedCashCop);
+      setOpeningBaseInputCop(json.summary.openingBaseCop ?? 0);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
@@ -115,6 +129,61 @@ export function CashRegisterModal({
       setClosureResult(null);
     }
   }, [isOpen]);
+
+  const handleSetOpeningBase = async () => {
+    try {
+      setIsLoading(true);
+      setMessage(null);
+      const res = await fetch('/api/cash-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'SET_OPENING_BASE',
+          cashierCode: (cashierCode.trim() || 'SEC-ADMIN').toUpperCase(),
+          amountCop: Math.max(0, Number(openingBaseInputCop) || 0),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Error guardando base inicial');
+      setMessage(json.message);
+      await loadCashData();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Error fijando base de caja');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegisterOutflow = async () => {
+    if (!outflowAmountCop || outflowAmountCop <= 0 || outflowConcept.trim().length < 3) {
+      setMessage('Indique monto válido y concepto de la salida de caja menor');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      setMessage(null);
+      const res = await fetch('/api/cash-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CASH_OUTFLOW',
+          cashierCode: (cashierCode.trim() || 'SEC-ADMIN').toUpperCase(),
+          amountCop: Number(outflowAmountCop),
+          concept: outflowConcept.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Error registrando gasto');
+      setOutflowAmountCop(0);
+      setOutflowConcept('');
+      setMessage(json.message);
+      await loadCashData();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Error en salida de caja');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleCloseShift = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,32 +268,133 @@ export function CashRegisterModal({
             </div>
           )}
 
-          {/* Tarjetas de Resumen Consolidado */}
+          {/* Tarjetas de Resumen Consolidado + Ecuación de Gaveta */}
           {data && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
-                <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
-                  Efectivo Esperado
-                </span>
-                <span className="text-base sm:text-lg font-black text-emerald-800 dark:text-emerald-400">
-                  {formatCop(data.summary.expectedCashCop)}
-                </span>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
+                  <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
+                    Efectivo Neto Gaveta
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-emerald-800 dark:text-emerald-400">
+                    {formatCop(data.summary.expectedCashCop)}
+                  </span>
+                  <span className="block text-[10px] text-neutral-500">
+                    Base + Recaudo - Salidas
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
+                  <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
+                    Nequi / Transf
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-blue-800 dark:text-blue-400">
+                    {formatCop(data.summary.expectedTransfCop)}
+                  </span>
+                </div>
+                <div className="rounded-2xl border-2 border-[#E4BDD0] bg-[#ECCCD9]/40 p-3 text-center dark:border-[#3A3035] dark:bg-[#2A2226]">
+                  <span className="text-xs font-black text-[#141213] dark:text-[#ECCCD9] block">
+                    Gran TotalVentas/Abonos
+                  </span>
+                  <span className="text-base sm:text-xl font-black text-[#141213] dark:text-white">
+                    {formatCop(data.summary.grandTotalCop)}
+                  </span>
+                </div>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
-                <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
-                  Nequi / Transf
-                </span>
-                <span className="text-base sm:text-lg font-black text-blue-800 dark:text-blue-400">
-                  {formatCop(data.summary.expectedTransfCop)}
-                </span>
-              </div>
-              <div className="rounded-2xl border-2 border-[#E4BDD0] bg-[#ECCCD9]/40 p-3 text-center dark:border-[#3A3035] dark:bg-[#2A2226]">
-                <span className="text-xs font-black text-[#141213] dark:text-[#ECCCD9] block">
-                  Gran Total Día
-                </span>
-                <span className="text-base sm:text-xl font-black text-[#141213] dark:text-white">
-                  {formatCop(data.summary.grandTotalCop)}
-                </span>
+
+              {/* Control de Base Inicial del Cajón (+) y Gastos / Salidas de Caja Menor (-) */}
+              <div className="rounded-2xl border border-[#E4BDD0] bg-[#FDF8FA] p-3.5 space-y-3 text-xs dark:border-[#3A3035] dark:bg-[#1E1A1C]">
+                <div className="grid grid-cols-3 gap-2 text-center border-b border-[#F0DCE5] pb-2.5 dark:border-[#2C2528]">
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">+ Base Inicial</span>
+                    <strong className="text-xs text-[#141213] dark:text-white">
+                      {formatCop(data.summary.openingBaseCop ?? 0)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">+ Recaudo Efectivo</span>
+                    <strong className="text-xs text-emerald-700 dark:text-emerald-400">
+                      {formatCop(data.summary.collectedCashCop ?? data.summary.expectedCashCop)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-neutral-500 block">- Salidas / Gastos</span>
+                    <strong className="text-xs text-rose-600 dark:text-rose-400">
+                      {formatCop(data.summary.outflowsTotalCop ?? 0)}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Fijar Base Inicial */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-[#141213] dark:text-[#ECCCD9]">
+                      Base Inicial Cajón:
+                    </span>
+                    {[100000, 150000, 200000].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setOpeningBaseInputCop(preset)}
+                        className="rounded-md border border-[#E2B5C9] bg-white px-2 py-0.5 text-[10px] font-bold text-[#141213] hover:bg-[#FAF0F5] dark:border-[#382F34] dark:bg-[#141213] dark:text-[#ECCCD9]"
+                      >
+                        {formatCop(preset)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={10000}
+                      value={openingBaseInputCop || ''}
+                      onChange={(e) => setOpeningBaseInputCop(Number(e.target.value))}
+                      placeholder="Base ($)"
+                      className="h-8 w-28 text-xs font-bold"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSetOpeningBase}
+                      disabled={isLoading}
+                      className="h-8 text-xs font-bold"
+                    >
+                      Guardar Base
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Registrar Salida de Caja Menor */}
+                <div className="flex flex-col gap-1.5 border-t border-[#F0DCE5] pt-2.5 sm:flex-row sm:items-center dark:border-[#2C2528]">
+                  <span className="font-bold text-rose-700 dark:text-rose-400 shrink-0">
+                    Salida Caja Menor:
+                  </span>
+                  <Input
+                    type="number"
+                    min={1000}
+                    step={1000}
+                    value={outflowAmountCop || ''}
+                    onChange={(e) => setOutflowAmountCop(Number(e.target.value))}
+                    placeholder="Monto ($)"
+                    className="h-8 sm:w-28 text-xs"
+                  />
+                  <Input
+                    value={outflowConcept}
+                    onChange={(e) => setOutflowConcept(e.target.value)}
+                    placeholder="Concepto (Ej: Domicilio insumos, papelería)"
+                    className="h-8 flex-1 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRegisterOutflow}
+                    disabled={isLoading}
+                    className="h-8 shrink-0 text-xs font-bold text-rose-700 border-rose-300 hover:bg-rose-50"
+                  >
+                    - Registrar Gasto
+                  </Button>
+                </div>
               </div>
             </div>
           )}

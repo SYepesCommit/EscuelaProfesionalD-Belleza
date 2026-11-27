@@ -110,6 +110,13 @@ export async function GET(request: Request) {
     const fortnightKey = searchParams.get('fortnightKey') || currentFortnightKey;
     const includeInactive = searchParams.get('includeInactive') === 'true';
 
+    // Calcular rango de fechas del mes de la quincena para no traer ventas de años anteriores
+    const [fYearStr, fMonthStr] = fortnightKey.split('-');
+    const fYear = Number(fYearStr) || new Date().getFullYear();
+    const fMonth = Number(fMonthStr) || new Date().getMonth() + 1;
+    const monthStart = new Date(Date.UTC(fYear, fMonth - 1, 1, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(fYear, fMonth, 2, 23, 59, 59));
+
     const [
       staffUsers,
       timeLogs,
@@ -146,7 +153,10 @@ export async function GET(request: Request) {
         where: { fortnightKey },
       }),
       prisma.sale.findMany({
-        where: { status: 'COMPLETADA' },
+        where: {
+          status: 'COMPLETADA',
+          createdAt: { gte: monthStart, lte: monthEnd },
+        },
         select: {
           id: true,
           commissionedSellerId: true,

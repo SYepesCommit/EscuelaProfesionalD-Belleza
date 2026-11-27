@@ -44,9 +44,9 @@ function DashboardContent({
     setIsRefreshingGlobal(true);
     try {
       await reloadInventory();
-      // Dispara evento global de revalidación para que los hooks activos sincronicen
+      // Dispara evento global de actualización manual solicitada por el usuario
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new CustomEvent('epb:manual-refresh'));
       }
     } finally {
       setTimeout(() => setIsRefreshingGlobal(false), 500);

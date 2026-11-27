@@ -53,29 +53,15 @@ export function useSchedules() {
     void loadData();
   }, [loadData]);
 
-  // Polling Inteligente en Segundo Plano para Clases y Salones
+  // Actualización bajo demanda cuando el usuario pulsa "Actualizar Datos" en la barra superior
   useEffect(() => {
-    const POLLING_INTERVAL_MS = 8000; // 8 segundos
-
-    const intervalId = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void loadData(true);
-      }
-    }, POLLING_INTERVAL_MS);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void loadData(true);
-      }
+    const handleManualRefresh = () => {
+      void loadData(true);
     };
 
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
-
+    window.addEventListener('epb:manual-refresh', handleManualRefresh);
     return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
+      window.removeEventListener('epb:manual-refresh', handleManualRefresh);
     };
   }, [loadData]);
 

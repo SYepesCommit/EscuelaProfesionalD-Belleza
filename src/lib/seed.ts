@@ -1,15 +1,21 @@
 import { prisma } from '@/lib/prisma';
 
+let isSeedVerified = false;
+
 /**
  * Inicializa únicamente el Administrador Principal (Santiago Yepes)
  * si la base de datos está completamente vacía (0 usuarios).
- * No puebla datos ficticios ni de prueba; todos los demás usuarios,
- * salones, alumnas y productos se crean desde los módulos del sistema.
+ * Usa caché en memoria para no ejecutar COUNT(*) en cada petición HTTP.
  */
 export async function ensureSeededDatabase(): Promise<void> {
+  if (isSeedVerified) return;
+
   const userCount = await prisma.user.count();
 
-  if (userCount > 0) return;
+  if (userCount > 0) {
+    isSeedVerified = true;
+    return;
+  }
 
   await prisma.user.create({
     data: {
@@ -26,4 +32,6 @@ export async function ensureSeededDatabase(): Promise<void> {
       isActive: true,
     },
   });
+
+  isSeedVerified = true;
 }

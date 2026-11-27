@@ -48,31 +48,15 @@ export function useInventory() {
     void loadInventory();
   }, [loadInventory]);
 
-  // Polling Inteligente en Segundo Plano (Tiempo Real Multi-PC)
+  // Actualización bajo demanda cuando el usuario pulsa "Actualizar Datos" en la barra superior
   useEffect(() => {
-    const POLLING_INTERVAL_MS = 5000; // Consulta ligera cada 5 segundos
-
-    const intervalId = setInterval(() => {
-      // Solo consulta si la ventana del navegador está visible y activa
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void loadInventory(true);
-      }
-    }, POLLING_INTERVAL_MS);
-
-    // Revalidación inmediata al enfocar la ventana o cambiar de pestaña
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void loadInventory(true);
-      }
+    const handleManualRefresh = () => {
+      void loadInventory(true);
     };
 
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
-
+    window.addEventListener('epb:manual-refresh', handleManualRefresh);
     return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
+      window.removeEventListener('epb:manual-refresh', handleManualRefresh);
     };
   }, [loadInventory]);
 

@@ -53,29 +53,15 @@ export function useStudents() {
     void loadStudents();
   }, [loadStudents]);
 
-  // Polling Inteligente en Segundo Plano para Alumnas, Pagos y Multas
+  // Actualización bajo demanda cuando el usuario pulsa "Actualizar Datos" en la barra superior
   useEffect(() => {
-    const POLLING_INTERVAL_MS = 6000; // 6 segundos
-
-    const intervalId = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void loadStudents(true);
-      }
-    }, POLLING_INTERVAL_MS);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void loadStudents(true);
-      }
+    const handleManualRefresh = () => {
+      void loadStudents(true);
     };
 
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
-
+    window.addEventListener('epb:manual-refresh', handleManualRefresh);
     return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
+      window.removeEventListener('epb:manual-refresh', handleManualRefresh);
     };
   }, [loadStudents]);
 

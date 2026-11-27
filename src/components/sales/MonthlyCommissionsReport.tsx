@@ -134,6 +134,46 @@ export function MonthlyCommissionsReport({
     document.body.removeChild(link);
   };
 
+  // Exportación del Libro Contable Consolidado del Mes (Ventas POS + Abonos Académicos + Multas)
+  const handleExportAccountingBookCsv = () => {
+    const movements = financialOverview?.detailedAccountingMovements || [];
+    const headers = [
+      'Fecha_Hora',
+      'Tipo_Movimiento',
+      'No_Factura_Recibo',
+      'Cliente_o_Alumna',
+      'Documento_CC_NIT',
+      'Concepto_Detalle',
+      'Medio_de_Pago',
+      'Referencia_Cuenta_o_Regla',
+      'Valor_COP',
+    ];
+
+    const rows = movements.map((m) => [
+      new Date(m.date).toLocaleString('es-CO'),
+      m.category,
+      `"${(m.referenceNumber || '').replace(/"/g, '""')}"`,
+      `"${(m.thirdPartyName || '').replace(/"/g, '""')}"`,
+      `"${(m.thirdPartyDocument || '').replace(/"/g, '""')}"`,
+      `"${(m.concept || '').replace(/"/g, '""')}"`,
+      m.paymentMethod,
+      `"${(m.paymentReference || '').replace(/"/g, '""')}"`,
+      m.amountCop,
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [headers.join(';'), ...rows.map((e) => e.join(';'))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Libro_Contable_EPB_${monthKey}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 min-w-0">
       {/* Barra de Filtro de Mes, Exportación Excel e Impresión */}
@@ -178,8 +218,21 @@ export function MonthlyCommissionsReport({
             }`}
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-            <span>Exportar CSV / Excel</span>
+            <span>Comisiones (.CSV)</span>
           </Button>
+
+          {financialOverview?.detailedAccountingMovements && (
+            <Button
+              type="button"
+              onClick={handleExportAccountingBookCsv}
+              className={`gap-1.5 bg-emerald-600 font-extrabold text-white hover:bg-emerald-700 ${
+                isTouchMode ? 'h-12 px-4 text-sm' : 'h-10 text-xs'
+              }`}
+            >
+              <Download className="h-4 w-4" />
+              <span>Exportar Libro Contable Mes (.CSV / Excel)</span>
+            </Button>
+          )}
 
           <Button
             type="button"

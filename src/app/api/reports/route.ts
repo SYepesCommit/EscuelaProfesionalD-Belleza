@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ensureSeededDatabase } from '@/lib/seed';
-import { getMonthKey } from '@/lib/utils';
+import { getColombiaMonthBounds, getMonthKey } from '@/lib/utils';
 import { SellerMonthlyCommissionSummary } from '@/interfaces/sale.interface';
 
 export async function GET(request: Request) {
@@ -47,9 +47,7 @@ export async function GET(request: Request) {
     });
 
     // Desglose de ingresos mensuales totales en la escuela (Ventas POS + Abonos Estudiantes + Multas)
-    const [startYear, startMonth] = monthKey.split('-').map(Number);
-    const startDate = new Date(startYear, startMonth - 1, 1);
-    const endDate = new Date(startYear, startMonth, 0, 23, 59, 59);
+    const { startOfMonth: startDate, endOfMonth: endDate } = getColombiaMonthBounds(monthKey);
 
     const [monthSales, monthStudentPayments, monthFines, allStudents] = await Promise.all([
       prisma.sale.findMany({
@@ -63,12 +61,20 @@ export async function GET(request: Request) {
         where: {
           createdAt: { gte: startDate, lte: endDate },
         },
+        include: {
+          student: { select: { fullName: true, documentId: true, programName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
       }),
       prisma.fine.findMany({
         where: {
           paidAt: { gte: startDate, lte: endDate },
           status: 'PAGADA',
         },
+        include: {
+          student: { select: { fullName: true, documentId: true } },
+        },
+        orderBy: { paidAt: 'desc' },
       }),
       prisma.student.findMany({
         where: {
@@ -96,6 +102,42 @@ export async function GET(request: Request) {
       estimatedIncomeCop: count * 1500000,
     }));
 
+    const detailedAccountingMovements = [
+      ...monthSales.map((s) => ({
+        date: s.createdAt.toISOString(),
+        category: 'VENTA_POS',
+        referenceNumber: s.invoiceNumber,
+        thirdPartyName: s.clientName,
+        thirdPartyDocument: s.clientDocument || 'MOSTRADOR',
+        concept: s.items.map((i) => `${i.quantity}x ${i.product.name}`).join(' + ') || 'Venta POS',
+        paymentMethod: s.paymentMethod,
+        paymentReference: s.protectionRuleApplied,
+        amountCop: s.totalCop,
+      })),
+      ...monthStudentPayments.map((p) => ({
+        date: p.createdAt.toISOString(),
+        category: 'ABONO_ACADEMICO',
+        referenceNumber: p.receiptNumber || p.id.slice(0, 8).toUpperCase(),
+        thirdPartyName: p.student.fullName,
+        thirdPartyDocument: p.student.documentId,
+        concept: `${p.concept} (${p.student.programName})`,
+        paymentMethod: p.paymentMethod,
+        paymentReference: p.paymentReference || 'DIRECTO',
+        amountCop: p.amountCop,
+      })),
+      ...monthFines.map((f) => ({
+        date: (f.paidAt || f.createdAt).toISOString(),
+        category: 'MULTA_INASISTENCIA',
+        referenceNumber: `MUL-${f.id.slice(0, 6).toUpperCase()}`,
+        thirdPartyName: f.student.fullName,
+        thirdPartyDocument: f.student.documentId,
+        concept: f.reason,
+        paymentMethod: f.paymentMethod,
+        paymentReference: f.paymentReference || 'CAJA',
+        amountCop: f.amountCop,
+      })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
     return NextResponse.json({
       monthKey,
       summary,
@@ -108,6 +150,7 @@ export async function GET(request: Request) {
         tuitionReceiptsCount: monthStudentPayments.length,
         finesCount: monthFines.length,
         courseBreakdown,
+        detailedAccountingMovements,
       },
     });
   } catch (error) {

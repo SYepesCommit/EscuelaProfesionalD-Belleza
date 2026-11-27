@@ -28,6 +28,16 @@ export function useAuditLogs() {
     void loadLogs();
   }, [loadLogs]);
 
+  useEffect(() => {
+    const handleManualRefresh = () => {
+      void loadLogs();
+    };
+    window.addEventListener('epb:manual-refresh', handleManualRefresh);
+    return () => {
+      window.removeEventListener('epb:manual-refresh', handleManualRefresh);
+    };
+  }, [loadLogs]);
+
   return {
     logs,
     isLoading,

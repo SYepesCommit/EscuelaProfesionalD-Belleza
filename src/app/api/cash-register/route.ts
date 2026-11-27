@@ -3,9 +3,16 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { recordAuditLog } from '@/lib/audit';
 import { ensureSeededDatabase } from '@/lib/seed';
+import { getColombiaDayBounds } from '@/lib/utils';
 
-// Esquema para acciones de caja: arqueo/cierre de caja y apertura manual de gaveta
+// Esquema para acciones de caja: arqueo/cierre de caja, base inicial, salida de caja menor y apertura manual de gaveta
 const cashRegisterActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('SET_OPENING_BASE'),
+    cashierCode: z.string().min(3),
+    amountCop: z.number().int().nonnegative(),
+    notes: z.string().optional(),
+  }),
   z.object({
     action: z.literal('DRAWER_OPEN'),
     cashierCode: z.string().min(3),
@@ -32,8 +39,7 @@ export async function GET(request: Request) {
     const dateQuery = url.searchParams.get('date');
 
     const targetDate = dateQuery ? new Date(dateQuery) : new Date();
-    const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-    const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
+    const { startOfDay, endOfDay } = getColombiaDayBounds(targetDate);
 
     // Ventas del día
     const salesToday = await prisma.sale.findMany({
@@ -119,19 +125,67 @@ export async function GET(request: Request) {
     }
 
     // Gran total consolidado en caja esperado
-    const expectedCashCop = salesCashCop + studentCashCop + finesCashCop;
+    const collectedCashCop = salesCashCop + studentCashCop + finesCashCop;
     const expectedTransfCop = salesTransfCop + studentTransfCop + finesTransfCop;
     const expectedCardCop = salesCardCop + studentCardCop + finesCardCop;
     const grandTotalCop = salesTotalCop + studentTotalCop + finesTotalCop;
 
+    // Consultar Base Inicial del Día y Salidas de Caja Menor en AuditLog
+    const [openingBaseLog, outflowLogs] = await Promise.all([
+      prisma.auditLog.findFirst({
+        where: {
+          action: 'CASH_REGISTER_OPENING_BASE',
+          createdAt: { gte: startOfDay, lte: endOfDay },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          action: 'CASH_DRAWER_OUTFLOW',
+          createdAt: { gte: startOfDay, lte: endOfDay },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const openingBaseCop =
+      openingBaseLog &&
+      openingBaseLog.newData &&
+      typeof openingBaseLog.newData === 'object' &&
+      'amountCop' in openingBaseLog.newData
+        ? Number((openingBaseLog.newData as { amountCop?: number }).amountCop || 0)
+        : 0;
+
+    const outflowsList = outflowLogs.map((log) => {
+      const nd = (log.newData || {}) as {
+        amountCop?: number;
+        concept?: string;
+        authorizedBy?: string;
+      };
+      return {
+        id: log.id,
+        amountCop: Number(nd.amountCop || 0),
+        concept: nd.concept || 'Salida de caja menor',
+        authorizedBy: nd.authorizedBy || 'Caja',
+        createdAt: log.createdAt.toISOString(),
+      };
+    });
+
+    const outflowsTotalCop = outflowsList.reduce((acc, item) => acc + item.amountCop, 0);
+    const expectedCashCop = Math.max(0, openingBaseCop + collectedCashCop - outflowsTotalCop);
+
     return NextResponse.json({
       date: startOfDay.toISOString(),
       summary: {
+        openingBaseCop,
+        collectedCashCop,
+        outflowsTotalCop,
         expectedCashCop,
         expectedTransfCop,
         expectedCardCop,
         grandTotalCop,
       },
+      outflowsList,
       breakdown: {
         sales: {
           count: salesToday.length,
@@ -200,6 +254,26 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
+    if (payload.action === 'SET_OPENING_BASE') {
+      await recordAuditLog({
+        userId: cashier.id,
+        action: 'CASH_REGISTER_OPENING_BASE',
+        entity: 'CashRegister',
+        entityId: `BASE-${Date.now()}`,
+        newData: {
+          registeredBy: cashier.fullName,
+          amountCop: payload.amountCop,
+          notes: payload.notes || 'Base inicial de apertura de turno',
+          timestamp: now.toISOString(),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Base inicial de caja fijada en $${payload.amountCop.toLocaleString('es-CO')} COP por ${cashier.fullName}`,
+      });
+    }
+
     if (payload.action === 'DRAWER_OPEN') {
       // Registrar apertura física de gaveta en auditoría forense
       await recordAuditLog({
@@ -242,9 +316,8 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === 'CLOSE_SHIFT') {
-      // Arqueo y Cierre de Caja
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      // Arqueo y Cierre de Caja (Siempre en hora oficial de Colombia UTC-5)
+      const { startOfDay, endOfDay } = getColombiaDayBounds(now);
 
       // Calcular ventas en efectivo
       const cashSales = await prisma.sale.aggregate({
@@ -275,10 +348,41 @@ export async function POST(request: Request) {
         _sum: { amountCop: true },
       });
 
-      const expectedCashCop =
+      const [openingBaseLog, outflowLogs] = await Promise.all([
+        prisma.auditLog.findFirst({
+          where: {
+            action: 'CASH_REGISTER_OPENING_BASE',
+            createdAt: { gte: startOfDay, lte: endOfDay },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.auditLog.findMany({
+          where: {
+            action: 'CASH_DRAWER_OUTFLOW',
+            createdAt: { gte: startOfDay, lte: endOfDay },
+          },
+        }),
+      ]);
+
+      const openingBaseCop =
+        openingBaseLog &&
+        openingBaseLog.newData &&
+        typeof openingBaseLog.newData === 'object' &&
+        'amountCop' in openingBaseLog.newData
+          ? Number((openingBaseLog.newData as { amountCop?: number }).amountCop || 0)
+          : 0;
+
+      const outflowsTotalCop = outflowLogs.reduce((acc, log) => {
+        const nd = (log.newData || {}) as { amountCop?: number };
+        return acc + Number(nd.amountCop || 0);
+      }, 0);
+
+      const collectedCashCop =
         (cashSales._sum.totalCop ?? 0) +
         (cashStudentPayments._sum.amountCop ?? 0) +
         (cashFines._sum.amountCop ?? 0);
+
+      const expectedCashCop = Math.max(0, openingBaseCop + collectedCashCop - outflowsTotalCop);
 
       const differenceCop = payload.physicalCashCop - expectedCashCop;
       const statusText =

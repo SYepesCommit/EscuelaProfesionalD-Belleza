@@ -58,6 +58,16 @@ export function useStaff() {
     void loadStaff(fortnightKey || undefined);
   }, [loadStaff, fortnightKey]);
 
+  useEffect(() => {
+    const handleManualRefresh = () => {
+      void loadStaff(fortnightKey || undefined);
+    };
+    window.addEventListener('epb:manual-refresh', handleManualRefresh);
+    return () => {
+      window.removeEventListener('epb:manual-refresh', handleManualRefresh);
+    };
+  }, [loadStaff, fortnightKey]);
+
   const registerBiometricLog = useCallback(
     async (params: {
       staffId?: string;

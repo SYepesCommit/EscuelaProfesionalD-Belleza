@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
+  LayoutDashboard,
   CalendarDays,
   GraduationCap,
   Fingerprint,
@@ -35,6 +36,7 @@ interface NavItem {
 }
 
 const ALL_NAV_ITEMS: NavItem[] = [
+  { label: 'Centro de Mando POS', href: '/dashboard', icon: LayoutDashboard, badge: 'Inicio' },
   { label: 'Agendas por Salón', href: '/agenda', icon: CalendarDays },
   { label: 'Alumnos y Multas', href: '/alumnos', icon: GraduationCap },
   { label: 'Asistencia Biométrica', href: '/asistencia', icon: Fingerprint },

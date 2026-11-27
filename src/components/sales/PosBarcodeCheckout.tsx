@@ -591,6 +591,71 @@ export function PosBarcodeCheckout({
               ))}
             </div>
 
+            {/* KITS & COMBOS RÁPIDOS DE ACADEMIA EPB (Carga múltiple en 1 clic) */}
+            {products.filter((p) => p.stock > 0).length >= 2 && (
+              <div className="rounded-2xl border border-[#E4BDD0] bg-gradient-to-r from-[#FAF0F5] to-[#FDF8FA] p-3 dark:border-[#3A3035] dark:from-[#231D20] dark:to-[#1B181A]">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-[#141213] dark:text-[#ECCCD9]">
+                    <Sparkles className="h-3.5 w-3.5 text-[#C86D94]" />
+                    Kits & Combos Rápidos de Academia (Carga todos los insumos en 1 clic):
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[
+                    {
+                      id: 'KIT-COLOR',
+                      title: 'Kit Práctico Color & Capilar',
+                      items: products.filter((p) => p.stock > 0).slice(0, 2),
+                    },
+                    {
+                      id: 'KIT-INGRESO',
+                      title: 'Combo Ingreso & Bioseguridad',
+                      items: products.filter((p) => p.stock > 0).slice(1, 3),
+                    },
+                    {
+                      id: 'KIT-FULL',
+                      title: 'Pack Completo Alumna EPB',
+                      items: products.filter((p) => p.stock > 0).slice(0, 3),
+                    },
+                  ]
+                    .filter((kit) => kit.items.length > 0)
+                    .map((kit) => {
+                      const kitTotal = kit.items.reduce((acc, it) => acc + it.priceCop, 0);
+                      return (
+                        <button
+                          key={kit.id}
+                          type="button"
+                          onClick={() => {
+                            kit.items.forEach((prod) => onAddProduct(prod));
+                            setLastScannedNotice(
+                              `${kit.title} agregado (${kit.items.length} productos • ${formatCop(kitTotal)})`
+                            );
+                          }}
+                          className="flex flex-col justify-between rounded-xl border border-[#E2B5C9] bg-white p-2.5 text-left shadow-2xs transition hover:border-[#141213] hover:bg-[#FAF0F5] active:scale-[0.98] dark:border-[#382F34] dark:bg-[#181517] dark:hover:border-[#ECCCD9]"
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-[#141213] dark:text-white">
+                              {kit.title}
+                            </div>
+                            <div className="mt-0.5 text-[10px] text-neutral-500 dark:text-[#B8A9B1] line-clamp-1">
+                              Incluye: {kit.items.map((i) => i.name).join(' + ')}
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between border-t border-[#F2E0E8] pt-1.5 text-[11px] dark:border-[#2C2528]">
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                              {formatCop(kitTotal)}
+                            </span>
+                            <span className="rounded-md bg-[#ECCCD9] px-1.5 py-0.5 text-[10px] font-bold !text-[#141213]">
+                              + Cargar Kit ({kit.items.length})
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
             {lastScannedNotice && (
               <div className="flex items-center justify-between gap-2 rounded-xl border border-[#E4BDD0] bg-[#FAF2F6] px-4 py-2.5 text-xs font-bold text-[#141213] dark:border-[#3A3035] dark:bg-[#252023] dark:text-[#ECCCD9]">
                 <div className="flex items-center gap-2 min-w-0">

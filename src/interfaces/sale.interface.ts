@@ -127,6 +127,17 @@ export interface MonthlyFinancialOverview {
     newStudentsCount: number;
     estimatedIncomeCop: number;
   }[];
+  detailedAccountingMovements?: {
+    date: string;
+    category: string;
+    referenceNumber: string;
+    thirdPartyName: string;
+    thirdPartyDocument: string;
+    concept: string;
+    paymentMethod: string;
+    paymentReference: string;
+    amountCop: number;
+  }[];
 }
 
 export interface MonthlyReportResponse {

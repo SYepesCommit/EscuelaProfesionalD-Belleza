@@ -81,6 +81,7 @@ export async function GET() {
             collectedByUser: true,
           },
           orderBy: { createdAt: 'desc' },
+          take: 30,
         },
         attendances: {
           where: { status: 'PRESENTE' },
@@ -93,6 +94,7 @@ export async function GET() {
             operatorUser: true,
           },
           orderBy: { createdAt: 'desc' },
+          take: 30,
         },
       },
       orderBy: [{ isBlocked: 'desc' }, { fullName: 'asc' }],

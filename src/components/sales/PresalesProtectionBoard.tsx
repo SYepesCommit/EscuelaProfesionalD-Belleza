@@ -40,6 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateTimeCo } from '@/lib/utils';
+import { buildPresaleFollowUpMessage, buildWhatsAppUrl } from '@/lib/whatsapp';
 
 interface PresalesProtectionBoardProps {
   presales: ClientPresaleItem[];
@@ -625,6 +626,21 @@ export function PresalesProtectionBoard({
                             <MessageSquare className="h-3.5 w-3.5" />
                             Bitácora {p.notes ? '•' : ''}
                           </Button>
+                          <a
+                            href={buildWhatsAppUrl(
+                              p.clientPhone,
+                              buildPresaleFollowUpMessage({
+                                clientName: p.clientName,
+                                sellerName: p.effectiveCommissionSellerName || p.initialSellerName,
+                                interestedItem: p.interestedCourseOrItem,
+                              })
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-bold text-white hover:bg-emerald-700"
+                          >
+                            WhatsApp
+                          </a>
                         </div>
                       </div>
                     </div>
@@ -750,6 +766,23 @@ export function PresalesProtectionBoard({
                                   <span className="h-1.5 w-1.5 rounded-full bg-[#141213] dark:bg-[#ECCCD9]" />
                                 )}
                               </Button>
+                              <a
+                                href={buildWhatsAppUrl(
+                                  p.clientPhone,
+                                  buildPresaleFollowUpMessage({
+                                    clientName: p.clientName,
+                                    sellerName:
+                                      p.effectiveCommissionSellerName || p.initialSellerName,
+                                    interestedItem: p.interestedCourseOrItem,
+                                  })
+                                )}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-bold text-white hover:bg-emerald-700"
+                                title="Contactar prospecto por WhatsApp"
+                              >
+                                <span>WhatsApp</span>
+                              </a>
                             </div>
                           </TableCell>
                         </TableRow>

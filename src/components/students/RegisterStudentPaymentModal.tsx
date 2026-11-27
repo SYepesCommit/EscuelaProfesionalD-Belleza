@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { StudentItem } from '@/interfaces/student.interface';
 import { formatCop } from '@/lib/utils';
 import { printThermalHtml } from '@/lib/thermal-print';
+import { buildPaymentReceiptMessage, buildWhatsAppUrl } from '@/lib/whatsapp';
 
 interface RegisterStudentPaymentModalProps {
   isOpen: boolean;
@@ -253,7 +254,7 @@ export function RegisterStudentPaymentModal({
               )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -263,6 +264,24 @@ export function RegisterStudentPaymentModal({
                 <Printer className="h-4 w-4" />
                 Imprimir Recibo
               </Button>
+              <a
+                href={buildWhatsAppUrl(
+                  student.phone,
+                  buildPaymentReceiptMessage({
+                    studentName: student.fullName,
+                    receiptNumber: completedVoucher.receiptNumber,
+                    amountPaidCop: completedVoucher.amountPaid,
+                    newBalanceCop: completedVoucher.newBalance,
+                    concept,
+                    paymentMethod,
+                  })
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 h-11 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700"
+              >
+                Enviar por WhatsApp
+              </a>
               <Button
                 type="button"
                 variant="pink"
@@ -388,7 +407,7 @@ export function RegisterStudentPaymentModal({
               <Label className="text-xs font-bold text-neutral-700 dark:text-[#C4B5BC]">
                 Medio de Recepción *
               </Label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2">
                 {PAYMENT_METHODS.map((pm) => {
                   const active = paymentMethod === pm;
                   return (
@@ -410,10 +429,10 @@ export function RegisterStudentPaymentModal({
             </div>
 
             {/* Referencia de pago y observaciones */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 items-end">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-neutral-700 dark:text-[#C4B5BC]">
-                  No. de Recibo / Ref. Transacción
+                  No. Recibo / Referencia
                 </Label>
                 <Input
                   value={paymentReference}
