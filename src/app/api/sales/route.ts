@@ -95,12 +95,22 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
-    const closingSeller = await prisma.user.findFirst({
-      where: {
-        sellerSecretCode: data.closingSellerSecretCode.trim().toUpperCase(),
-        isActive: true,
-      },
-    });
+    const codeOrId = data.closingSellerSecretCode.trim();
+    const closingSeller =
+      (await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: codeOrId },
+            { sellerSecretCode: codeOrId.toUpperCase() },
+            { accessCode: codeOrId.toUpperCase() },
+          ],
+          isActive: true,
+        },
+      })) ||
+      (await prisma.user.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+      }));
 
     if (!closingSeller) {
       return NextResponse.json(

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Barcode,
@@ -9,6 +9,7 @@ import {
   Layers,
   PackageCheck,
   PackagePlus,
+  RefreshCw,
   Save,
   SlidersHorizontal,
   Tag,
@@ -59,6 +60,7 @@ export function ProductFormModal({
   onUpdate,
 }: ProductFormModalProps) {
   const [barcode, setBarcode] = useState('');
+  const [registrationMode, setRegistrationMode] = useState<'NEW' | 'REPLACE_BARCODE'>('NEW');
   const [linkedExistingId, setLinkedExistingId] = useState<string>('');
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
@@ -72,6 +74,7 @@ export function ProductFormModal({
   const [alertPercent, setAlertPercent] = useState<number>(30);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const wasOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
     try {
@@ -112,36 +115,53 @@ export function ProductFormModal({
     }
   };
 
+  // Inicializar el formulario ÚNICAMENTE cuando el modal pasa de cerrado a abierto
   useEffect(() => {
-    if (!isOpen) return;
-    setErrorMsg(null);
-    setLinkedExistingId('');
-    if (editingProduct) {
-      setBarcode(editingProduct.barcode);
-      setSku(editingProduct.sku);
-      setName(editingProduct.name);
-      setDescription(editingProduct.description ?? '');
-      setCategory(editingProduct.category);
-      setPriceCop(editingProduct.priceCop);
-      setCostCop(editingProduct.costCop);
-      setStock(editingProduct.stock);
-      setBaseCapacity(
-        Math.max(editingProduct.minStock, editingProduct.stock, 10)
-      );
-      setAlertPercent(editingProduct.alertPercent ?? 30);
-    } else {
-      setBarcode(prefilledBarcode || '');
-      setSku('');
-      setName('');
-      setDescription('');
-      setCategory('Uñas y Nail Art');
-      setPriceCop(45000);
-      setCostCop(22000);
-      setStock(40);
-      setBaseCapacity(50);
-      setAlertPercent(30);
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true;
+      setErrorMsg(null);
+      setRegistrationMode('NEW');
+      setLinkedExistingId('');
+      if (editingProduct) {
+        setBarcode(editingProduct.barcode);
+        setSku(editingProduct.sku);
+        setName(editingProduct.name);
+        setDescription(editingProduct.description ?? '');
+        setCategory(editingProduct.category);
+        setPriceCop(editingProduct.priceCop);
+        setCostCop(editingProduct.costCop);
+        setStock(editingProduct.stock);
+        setBaseCapacity(
+          Math.max(editingProduct.minStock, editingProduct.stock, 10)
+        );
+        setAlertPercent(editingProduct.alertPercent ?? 30);
+      } else {
+        setBarcode(prefilledBarcode || '');
+        setSku('');
+        setName('');
+        setDescription('');
+        setCategory('Uñas y Nail Art');
+        setPriceCop(45000);
+        setCostCop(22000);
+        setStock(40);
+        setBaseCapacity(50);
+        setAlertPercent(30);
+      }
     }
   }, [isOpen, editingProduct, prefilledBarcode]);
+
+  // Si el modal YA está abierto y se escanea un nuevo código de barras, solo actualiza el campo barcode
+  // sin reiniciar la pestaña elegida (Producto Nuevo vs Reemplazar Código) ni borrar los demás datos
+  useEffect(() => {
+    if (isOpen && wasOpenRef.current && prefilledBarcode) {
+      setBarcode(prefilledBarcode);
+    }
+  }, [isOpen, prefilledBarcode]);
 
   const handleLinkToExistingProduct = (productId: string) => {
     setLinkedExistingId(productId);
@@ -290,32 +310,109 @@ export function ProductFormModal({
             </div>
           )}
 
-          {/* Pregunta inteligente cuando se escanea un código de barras no reconocido */}
+          {/* Decisión de Tipo de Operación: Producto Nuevo vs. Reemplazo de Código */}
           {!editingProduct && existingProducts.length > 0 && (
-            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/80 p-3.5 space-y-2 dark:border-amber-700/60 dark:bg-amber-950/30">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-black text-amber-950 dark:text-amber-200">
-                  ¿Es un producto nuevo o un producto existente que cambió de código de barras?
-                </span>
+            <div className="rounded-2xl border border-[#E4BDD0] bg-[#FAF3F6] p-3.5 space-y-3 dark:border-[#3A3035] dark:bg-[#201B1E]">
+              <div className="text-xs font-bold text-[#141213] dark:text-[#ECCCD9]">
+                Tipo de operación en inventario
               </div>
-              <select
-                value={linkedExistingId}
-                onChange={(e) => handleLinkToExistingProduct(e.target.value)}
-                className="flex h-10 w-full rounded-xl border border-amber-400 bg-white px-3 text-xs font-bold text-[#141213] dark:border-amber-700 dark:bg-[#161315] dark:text-white"
-              >
-                <option value="">✨ Es un Producto Nuevo (Registrar desde cero)</option>
-                <optgroup label="🔄 Es un producto existente (Actualizar su código de barras):">
-                  {existingProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (Cód. anterior: {p.barcode} • Stock: {p.stock} uds)
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              {linkedExistingId && (
-                <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                  ✓ Se actualizará el producto seleccionado con el nuevo código de barras ({barcode}) conservando su historial.
-                </p>
+
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationMode('NEW');
+                    handleLinkToExistingProduct('');
+                  }}
+                  className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                    registrationMode === 'NEW'
+                      ? 'border-[#141213] bg-[#141213] text-white shadow-xs dark:border-[#ECCCD9] dark:bg-[#ECCCD9] dark:!text-[#141213]'
+                      : 'border-[#E2B5C9] bg-white text-[#141213] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      registrationMode === 'NEW'
+                        ? 'bg-[#ECCCD9] text-[#141213] dark:bg-[#141213] dark:!text-[#ECCCD9]'
+                        : 'bg-[#F5DCE7] text-[#141213] dark:bg-[#2A2327] dark:text-[#ECCCD9]'
+                    }`}
+                  >
+                    <PackagePlus className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold">Producto Nuevo</div>
+                    <div
+                      className={`mt-0.5 text-[11px] leading-snug ${
+                        registrationMode === 'NEW'
+                          ? 'text-[#ECCCD9] dark:!text-[#141213]/80'
+                          : 'text-neutral-500 dark:text-[#B8A9B1]'
+                      }`}
+                    >
+                      Crear una referencia nueva desde cero
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationMode('REPLACE_BARCODE');
+                    if (!linkedExistingId && existingProducts[0]) {
+                      handleLinkToExistingProduct(existingProducts[0].id);
+                    }
+                  }}
+                  className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                    registrationMode === 'REPLACE_BARCODE'
+                      ? 'border-[#141213] bg-[#141213] text-white shadow-xs dark:border-[#ECCCD9] dark:bg-[#ECCCD9] dark:!text-[#141213]'
+                      : 'border-[#E2B5C9] bg-white text-[#141213] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      registrationMode === 'REPLACE_BARCODE'
+                        ? 'bg-[#ECCCD9] text-[#141213] dark:bg-[#141213] dark:!text-[#ECCCD9]'
+                        : 'bg-[#F5DCE7] text-[#141213] dark:bg-[#2A2327] dark:text-[#ECCCD9]'
+                    }`}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold">Reemplazar Código de Existente</div>
+                    <div
+                      className={`mt-0.5 text-[11px] leading-snug ${
+                        registrationMode === 'REPLACE_BARCODE'
+                          ? 'text-[#ECCCD9] dark:!text-[#141213]/80'
+                          : 'text-neutral-500 dark:text-[#B8A9B1]'
+                      }`}
+                    >
+                      El producto ya existe y cambió de código
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {registrationMode === 'REPLACE_BARCODE' && (
+                <div className="space-y-1.5 border-t border-[#E8C8D7] pt-2.5 dark:border-[#332B2F]">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#141213] dark:text-[#ECCCD9]">
+                    Seleccione el producto del catálogo al que se le actualizará el código:
+                  </label>
+                  <select
+                    value={linkedExistingId}
+                    onChange={(e) => handleLinkToExistingProduct(e.target.value)}
+                    className="flex h-10 w-full rounded-xl border border-[#D9AFC2] bg-white px-3 text-xs font-bold text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                  >
+                    {existingProducts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — Cód. actual: {p.barcode} ({p.stock} uds)
+                      </option>
+                    ))}
+                  </select>
+                  {linkedExistingId && (
+                    <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      Se conservará el historial del producto seleccionado y se actualizará su código de barras.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -331,6 +428,11 @@ export function ProductFormModal({
                 <Input
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="Ej: 770100100101"
                   className="h-10 font-mono text-sm font-bold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
                   required
@@ -340,7 +442,7 @@ export function ProductFormModal({
               <div className="flex flex-col">
                 <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-[#141213] dark:text-[#ECCCD9]">
                   <Tag className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">Referencia / SKU Interno (Opcional)</span>
+                  <span className="truncate">Referencia / SKU (Opcional)</span>
                 </label>
                 <Input
                   value={sku}

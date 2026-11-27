@@ -428,6 +428,69 @@ export function RegisterStudentPaymentModal({
               </div>
             </div>
 
+            {/* Atajos Rápidos de Verificación de Transferencia (Nequi / Bancolombia / Últimos 4 dígitos / Auto-Hora) */}
+            {(paymentMethod === 'TRANSFERENCIA' || paymentMethod === 'MIXTO') && (
+              <div className="rounded-2xl border border-[#E4BDD0] bg-[#FAF3F6] p-3 space-y-2.5 dark:border-[#3A3035] dark:bg-[#201B1E]">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <span className="text-[11px] font-bold text-[#141213] dark:text-[#ECCCD9]">
+                    Verificación rápida de Transferencia:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(['Nequi', 'Bancolombia', 'Daviplata'] as const).map((bank) => (
+                      <button
+                        key={bank}
+                        type="button"
+                        onClick={() => {
+                          const timeStamp = new Date().toLocaleTimeString('es-CO', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          });
+                          setPaymentReference(`${bank} Verificado • ${timeStamp}`);
+                        }}
+                        className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white shadow-2xs transition hover:bg-emerald-700"
+                        title={`Marcar ${bank} verificado con hora actual en 1 clic`}
+                      >
+                        ✓ {bank} (Auto-Hora)
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          if (text && text.trim()) {
+                            setPaymentReference(text.trim().slice(0, 45));
+                          }
+                        } catch {
+                          // ignore clipboard error
+                        }
+                      }}
+                      className="rounded-lg border border-[#D9AFC2] bg-white px-2 py-1 text-[10px] font-bold text-[#141213] transition hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-[#ECCCD9]"
+                    >
+                      Pegar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+                  <div className="sm:col-span-5">
+                    <Input
+                      maxLength={6}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setPaymentReference(val ? `Transf. Ult.4: #${val}` : '');
+                      }}
+                      placeholder="Últ. 4 dígitos (Ej: 4890)"
+                      className="h-9 text-xs font-mono font-bold border-neutral-300 bg-white dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                    />
+                  </div>
+                  <div className="sm:col-span-7 flex items-center text-[11px] text-neutral-600 dark:text-[#C4B5BC]">
+                    Digite solo los últimos 4 números del comprobante/celular o use los botones de arriba en 1 clic.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Referencia de pago y observaciones */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 items-end">
               <div className="space-y-1.5">

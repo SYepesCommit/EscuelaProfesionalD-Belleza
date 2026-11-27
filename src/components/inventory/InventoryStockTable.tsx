@@ -108,6 +108,11 @@ export function InventoryStockTable({
   useBarcodeScanner({
     onScan: (ev) => {
       const code = ev.barcode.trim();
+      // Si el modal de producto ya está abierto, solo actualiza el código escaneado sin cambiar de modo
+      if (isModalOpen) {
+        setPrefilledBarcode(code);
+        return;
+      }
       const found = products.find((p) => p.barcode === code);
       if (found) {
         setSearchQuery(code);

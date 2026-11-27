@@ -35,6 +35,7 @@ import {
   SaleRecordItem,
 } from '@/interfaces/sale.interface';
 import { useBarcodeScanner, normalizeBarcode } from '@/hooks/useBarcodeScanner';
+import { useAuthSession } from '@/hooks/useAuthSession';
 import { useUiMode } from '@/hooks/useUiMode';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCop, formatDateTimeCo } from '@/lib/utils';
+import { printThermalHtml } from '@/lib/thermal-print';
 import { CashRegisterModal } from './CashRegisterModal';
 import { ThermalTicketModal } from './ThermalTicketModal';
 
@@ -91,6 +93,7 @@ export function PosBarcodeCheckout({
   onVoidSale,
 }: PosBarcodeCheckoutProps) {
   const { isTouchMode } = useUiMode();
+  const { user: sessionUser } = useAuthSession();
 
   const [manualBarcode, setManualBarcode] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -141,7 +144,51 @@ export function PosBarcodeCheckout({
     description: '',
   });
 
-  const [activeCashierName, setActiveCashierName] = useState<string>('Laura Ríos (Ejecutiva A)');
+  const [activeCashierName, setActiveCashierName] = useState<string>(
+    sessionUser?.fullName || 'Santiago Yepes'
+  );
+  const [customSellerOverride, setCustomSellerOverride] = useState<boolean>(false);
+  const [sellersList, setSellersList] = useState<
+    Array<{
+      id: string;
+      fullName: string;
+      role: string;
+      accessCode: string;
+      sellerSecretCode: string | null;
+    }>
+  >([]);
+  const [pendingSeller, setPendingSeller] = useState<{
+    id: string;
+    fullName: string;
+    accessCode: string;
+    sellerSecretCode: string | null;
+  } | null>(null);
+  const [sellerPinInput, setSellerPinInput] = useState('');
+  const [sellerPinError, setSellerPinError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch('/api/users')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((users) => {
+        if (Array.isArray(users)) {
+          setSellersList(
+            users.filter(
+              (u) =>
+                u.isActive &&
+                (u.role === 'VENTA' || u.role === 'ASESOR' || u.role === 'ADMIN')
+            )
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (sessionUser && !customSellerOverride) {
+      setActiveCashierName(sessionUser.fullName);
+      setClosingSellerSecretCode(sessionUser.id);
+    }
+  }, [sessionUser, customSellerOverride]);
 
   const handleBarcodeLookup = useCallback(
     (code: string) => {
@@ -193,12 +240,25 @@ export function PosBarcodeCheckout({
   const isDiscountOverLimit = discountCop > maxAllowedDiscountWithoutPin;
 
   const handleTriggerOpenDrawer = () => {
+    // Si ya hay sesión activa de ADMIN o VENTA, dispara directamente el pulso a la impresora térmica
+    // y registra la auditoría sin pedir huella en caja (ya que el huellero está en recepción).
+    if (sessionUser && (sessionUser.role === 'ADMIN' || sessionUser.role === 'VENTA')) {
+      void executeDrawerOpen({
+        userId: sessionUser.id,
+        fullName: sessionUser.fullName,
+        role: sessionUser.role,
+        sellerSecretCode: sessionUser.id,
+        fingerprintTemplate: 'SESSION_ACTIVE',
+      });
+      return;
+    }
+
     setBiometricModal({
       isOpen: true,
       purpose: 'OPEN_DRAWER',
       title: 'Apertura de Gaveta de Dinero (Cajón Monedero)',
       description:
-        'Por seguridad antifraude y control financiero, la apertura manual de la gaveta exige confirmación por huella dactilar del cajero o administrador.',
+        'Autorice la apertura manual de la gaveta con código o huella de cajero/administrador.',
       requiredRoles: ['ADMIN', 'VENTA'],
     });
   };
@@ -206,18 +266,32 @@ export function PosBarcodeCheckout({
   const executeDrawerOpen = async (user: AuthorizedUserResult) => {
     try {
       setIsDrawerOpening(true);
+      const nowStr = formatDateTimeCo(new Date());
+
+      // 1. Enviar micro-pulso de impresión a la impresora térmica 80mm
+      // (La impresora recibe la orden y su puerto RJ11 dispara el pulso eléctrico de 24V que abre el cajón)
+      printThermalHtml(
+        'Pulso_Apertura_Gaveta_EPB',
+        `<div class="center" style="padding:2px 0;">
+          <div class="bold" style="font-size:11px;">*** APERTURA DE GAVETA POS ***</div>
+          <div style="font-size:10px;">Autorizado: ${user.fullName} (${user.role})</div>
+          <div style="font-size:9px;">${nowStr}</div>
+        </div>`
+      );
+
+      // 2. Registrar en auditoría forense
       const res = await fetch('/api/cash-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'DRAWER_OPEN',
           cashierCode: user.sellerSecretCode || user.userId,
-          reason: `Apertura manual autorizada por huella dactilar de ${user.fullName} (${user.role})`,
+          reason: `Apertura física de gaveta vía pulso de impresora térmica por ${user.fullName} (${user.role})`,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message);
-      setLastScannedNotice(`Gaveta abierta: Autorizado por huella de ${user.fullName}`);
+      setLastScannedNotice(`Pulso enviado a la impresora térmica: Gaveta abierta por ${user.fullName}`);
     } catch (err) {
       setLastScannedNotice(
         err instanceof Error ? err.message : 'Error al abrir gaveta'
@@ -258,9 +332,10 @@ export function PosBarcodeCheckout({
   };
 
   const executeCashierLogin = (user: AuthorizedUserResult) => {
-    setClosingSellerSecretCode(user.sellerSecretCode || 'LAURA-777');
+    setCustomSellerOverride(true);
+    setClosingSellerSecretCode(user.sellerSecretCode || user.userId);
     setActiveCashierName(user.fullName);
-    setLastScannedNotice(`Cajero activo cambiado a: ${user.fullName}`);
+    setLastScannedNotice(`Vendedor facturador cambiado a: ${user.fullName}`);
   };
 
   const handleBiometricAuthorized = async (user: AuthorizedUserResult) => {
@@ -823,32 +898,115 @@ export function PosBarcodeCheckout({
               onSubmit={handleCheckout}
               className="space-y-3 border-t border-neutral-200 pt-3 dark:border-[#332B2F]"
             >
-              {/* Cajero / Vendedor Responsable de Facturar (Biométrico) */}
-              <div className="space-y-1.5 rounded-xl border border-neutral-200 bg-[#FAF7F9] p-3 dark:border-[#332B2F] dark:bg-[#201C1E]">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1] flex items-center gap-1.5">
-                    <Fingerprint className="h-4 w-4 text-emerald-600" />
-                    Cajero Identificado por Huella:
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTriggerChangeCashier}
-                    className="h-7 text-[10px] font-bold gap-1 border-neutral-300 dark:border-[#3A3035]"
-                  >
-                    <Fingerprint className="h-3 w-3" />
-                    Cambiar Huella
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="font-extrabold text-xs text-[#141213] dark:text-white">
-                    {activeCashierName}
+              {/* Selector Rápido de Vendedor con PIN de Confirmación (Para PC compartido por 2+ vendedoras) */}
+              <div className="space-y-2 rounded-xl border border-[#E4BDD0] bg-[#FAF3F6] p-3 dark:border-[#332B2F] dark:bg-[#201C1E]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-600 dark:text-[#B8A9B1]">
+                    Vendedor que Factura (Comisión):
+                  </div>
+                  <span className="rounded-full bg-[#ECCCD9] px-2 py-0.5 text-[10px] font-bold !text-[#141213]">
+                    Activo: {activeCashierName}
                   </span>
-                  <Badge variant="pink" className="text-[10px] font-bold">
-                    Autenticado por Biometría USB
-                  </Badge>
                 </div>
+
+                {sellersList.length > 0 && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {sellersList.slice(0, 4).map((seller) => {
+                      const isSelected = activeCashierName === seller.fullName;
+                      return (
+                        <button
+                          key={seller.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) return;
+                            setPendingSeller(seller);
+                            setSellerPinInput('');
+                            setSellerPinError(null);
+                          }}
+                          className={`truncate rounded-lg border px-2.5 py-1.5 text-left text-xs font-bold transition ${
+                            isSelected
+                              ? 'border-[#141213] bg-[#141213] text-[#ECCCD9] dark:border-[#ECCCD9] dark:bg-[#ECCCD9] dark:!text-[#141213]'
+                              : 'border-[#E2B5C9] bg-white text-[#141213] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white'
+                          }`}
+                        >
+                          {seller.fullName.split(' ').slice(0, 2).join(' ')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Confirmación rápida por PIN / Código de Acceso al cambiar de vendedora */}
+                {pendingSeller && (
+                  <div className="rounded-lg border border-[#D9AFC2] bg-white p-2.5 space-y-2 dark:border-[#3A3035] dark:bg-[#161315]">
+                    <div className="text-[11px] font-bold text-[#141213] dark:text-[#ECCCD9]">
+                      Confirmar cambio a <strong>{pendingSeller.fullName}</strong>:
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="password"
+                        autoFocus
+                        value={sellerPinInput}
+                        onChange={(e) => {
+                          setSellerPinInput(e.target.value);
+                          setSellerPinError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const clean = sellerPinInput.trim().toUpperCase();
+                            const validAccess = pendingSeller.accessCode.toUpperCase();
+                            const validSecret = (pendingSeller.sellerSecretCode || '').toUpperCase();
+                            if (clean && (clean === validAccess || clean === validSecret)) {
+                              setCustomSellerOverride(true);
+                              setActiveCashierName(pendingSeller.fullName);
+                              setClosingSellerSecretCode(pendingSeller.id);
+                              setPendingSeller(null);
+                              setSellerPinInput('');
+                              setLastScannedNotice(`Vendedor activo cambiado a: ${pendingSeller.fullName}`);
+                            } else {
+                              setSellerPinError('Código o PIN incorrecto');
+                            }
+                          }
+                        }}
+                        placeholder="Digite su PIN / Código..."
+                        className="h-8 flex-1 text-xs font-mono"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          const clean = sellerPinInput.trim().toUpperCase();
+                          const validAccess = pendingSeller.accessCode.toUpperCase();
+                          const validSecret = (pendingSeller.sellerSecretCode || '').toUpperCase();
+                          if (clean && (clean === validAccess || clean === validSecret)) {
+                            setCustomSellerOverride(true);
+                            setActiveCashierName(pendingSeller.fullName);
+                            setClosingSellerSecretCode(pendingSeller.id);
+                            setPendingSeller(null);
+                            setSellerPinInput('');
+                            setLastScannedNotice(`Vendedor activo cambiado a: ${pendingSeller.fullName}`);
+                          } else {
+                            setSellerPinError('Código o PIN incorrecto');
+                          }
+                        }}
+                        className="h-8 px-2.5 text-xs font-bold"
+                      >
+                        Confirmar
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingSeller(null)}
+                        className="px-1.5 text-xs text-neutral-500 hover:text-neutral-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {sellerPinError && (
+                      <div className="text-[10px] font-bold text-rose-600">{sellerPinError}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -935,20 +1093,73 @@ export function PosBarcodeCheckout({
                         </button>
                       ))}
                     </div>
-                    <div className="pt-1">
-                      <Label className="text-[11px] font-bold text-neutral-700 dark:text-[#C4B5BC] mb-1 block">
-                        No. de Cuenta Destino / Ref. Comprobante ({transferChannel}):
-                      </Label>
-                      <Input
-                        value={transferAccountRef}
-                        onChange={(e) => setTransferAccountRef(e.target.value)}
-                        placeholder={
-                          transferChannel === 'Sistecrédito' || transferChannel === 'Addi'
-                            ? `No. Aprobación o Cédula ${transferChannel}...`
-                            : 'Ej: Cta #4521 o Ref Nequi #M98120...'
-                        }
-                        className="h-9 text-xs font-mono font-bold border-blue-300 bg-white text-[#141213] dark:border-blue-800 dark:bg-[#171416] dark:text-white"
-                      />
+                    <div className="pt-1 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <Label className="text-[11px] font-bold text-neutral-700 dark:text-[#C4B5BC]">
+                          Últimos 4 dígitos o Ref. ({transferChannel}):
+                        </Label>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const timeStamp = new Date().toLocaleTimeString('es-CO', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              });
+                              setTransferAccountRef(`Verificado ${transferChannel} • ${timeStamp}`);
+                            }}
+                            className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white shadow-2xs transition hover:bg-emerald-700"
+                            title="Sellar como verificado en pantalla con la hora exacta sin digitar"
+                          >
+                            ✓ Verificado Ahora (Auto-Hora)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const text = await navigator.clipboard.readText();
+                                if (text && text.trim()) {
+                                  setTransferAccountRef(text.trim().slice(0, 40));
+                                }
+                              } catch {
+                                // ignore clipboard permission denied
+                              }
+                            }}
+                            className="rounded-lg border border-blue-300 bg-white px-2 py-1 text-[10px] font-bold text-blue-900 transition hover:bg-blue-50 dark:border-blue-800 dark:bg-[#171416] dark:text-blue-200"
+                            title="Pegar código copiado desde WhatsApp Web"
+                          >
+                            Pegar
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+                        <div className="sm:col-span-5">
+                          <Input
+                            maxLength={6}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              setTransferAccountRef(
+                                val ? `${transferChannel} Ult.4: #${val}` : ''
+                              );
+                            }}
+                            placeholder="Últ. 4 dígitos (Ej: 4890)"
+                            className="h-9 text-xs font-mono font-bold border-blue-300 bg-white text-[#141213] dark:border-blue-800 dark:bg-[#171416] dark:text-white"
+                          />
+                        </div>
+                        <div className="sm:col-span-7">
+                          <Input
+                            value={transferAccountRef}
+                            onChange={(e) => setTransferAccountRef(e.target.value)}
+                            placeholder={
+                              transferChannel === 'Sistecrédito' || transferChannel === 'Addi'
+                                ? `No. Aprobación ${transferChannel}...`
+                                : 'O referencia completa / sello automático...'
+                            }
+                            className="h-9 text-xs font-mono font-bold border-blue-300 bg-white text-[#141213] dark:border-blue-800 dark:bg-[#171416] dark:text-white"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
