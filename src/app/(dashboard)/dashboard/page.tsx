@@ -364,10 +364,19 @@ export default function DashboardPage() {
   // Permiso para cobrar abonos académicos: solo ADMIN y ASESOR
   const canCollectAcademicPayments = role === 'ADMIN' || role === 'ASESOR';
 
-  const grossMonth = Math.max(1, commercial.monthlyOverview.schoolGrossIncomeCop);
-  const posPct = Math.round((commercial.monthlyOverview.posSalesTotalCop / grossMonth) * 100);
-  const tuitionPct = Math.round((commercial.monthlyOverview.tuitionTotalCop / grossMonth) * 100);
-  const finesPct = Math.max(0, 100 - posPct - tuitionPct);
+  const rawGrossMonth = commercial.monthlyOverview.schoolGrossIncomeCop;
+  const posPct =
+    rawGrossMonth > 0
+      ? Math.round((commercial.monthlyOverview.posSalesTotalCop / rawGrossMonth) * 100)
+      : 0;
+  const tuitionPct =
+    rawGrossMonth > 0
+      ? Math.round((commercial.monthlyOverview.tuitionTotalCop / rawGrossMonth) * 100)
+      : 0;
+  const finesPct =
+    rawGrossMonth > 0 && commercial.monthlyOverview.finesTotalCop > 0
+      ? Math.max(0, 100 - posPct - tuitionPct)
+      : 0;
 
   const filteredQuickDebtors = portfolio.topDebtors.filter(
     (d) =>
