@@ -87,6 +87,22 @@ export async function createSaleRequest(
   }
 }
 
+export async function voidSaleRequest(params: {
+  saleId: string;
+  voidReason: string;
+  operatorSecretCode: string;
+}): Promise<void> {
+  const res = await fetch('/api/sales', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = (await res.json()) as { message?: string };
+    throw new Error(err.message ?? 'Error reversando venta');
+  }
+}
+
 export async function fetchMonthlyCommissionsReport(
   monthKey?: string
 ): Promise<MonthlyReportResponse> {

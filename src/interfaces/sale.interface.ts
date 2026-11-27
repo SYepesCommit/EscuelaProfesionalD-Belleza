@@ -66,6 +66,7 @@ export interface CreateSalePayload {
   clientDocument?: string;
   clientName: string;
   paymentMethod: PaymentMethodType;
+  paymentAccountInfo?: string;
   discountCop?: number;
   items: {
     productId: string;

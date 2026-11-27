@@ -11,7 +11,8 @@ const STORAGE_KEY = 'epb_active_operator_user';
 
 export function useAuthSession() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,10 +27,15 @@ export function useAuthSession() {
           ) {
             window.localStorage.removeItem(STORAGE_KEY);
             setError('Su acceso temporal de Contabilidad/Invitado ha expirado.');
+            setIsInitializing(false);
             return;
           }
 
-          // Sincronizar ID con la base de datos actual por código de acceso
+          // Restaurar sesión de inmediato en cliente para evitar pestañeo del login al recargar
+          setUser(parsedUser);
+          setIsInitializing(false);
+
+          // Sincronizar silenciosamente con la base de datos en segundo plano
           const res = await fetch(
             `/api/auth?accessCode=${encodeURIComponent(parsedUser.accessCode)}`,
             { cache: 'no-store' }
@@ -42,15 +48,13 @@ export function useAuthSession() {
             if (data.authenticated && data.user) {
               setUser(data.user);
               window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
-              return;
             }
           }
-          setUser(parsedUser);
         }
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
       } finally {
-        setIsLoading(false);
+        setIsInitializing(false);
       }
     };
     void syncSession();
@@ -100,6 +104,7 @@ export function useAuthSession() {
 
   return {
     user,
+    isInitializing,
     isLoading,
     error,
     handleLoginByCode,

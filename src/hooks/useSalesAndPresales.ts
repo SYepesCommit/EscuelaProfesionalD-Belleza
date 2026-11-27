@@ -19,6 +19,7 @@ import {
   fetchPresales,
   fetchSales,
   registerPresaleRequest,
+  voidSaleRequest,
 } from '@/services/sale.service';
 
 export function useSalesAndPresales() {
@@ -147,6 +148,18 @@ export function useSalesAndPresales() {
     setCart((prev) => prev.filter((i) => i.productId !== productId));
   }, []);
 
+  const updateCartQuantity = useCallback((productId: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.productId !== productId) return item;
+          const nextQty = Math.min(item.maxStock, item.quantity + delta);
+          return nextQty > 0 ? { ...item, quantity: nextQty } : null;
+        })
+        .filter((item): item is CartSaleItem => item !== null)
+    );
+  }, []);
+
   const clearCart = useCallback(() => {
     setCart([]);
   }, []);
@@ -169,6 +182,18 @@ export function useSalesAndPresales() {
     [cart, loadAll, monthKey]
   );
 
+  const voidSale = useCallback(
+    async (params: {
+      saleId: string;
+      voidReason: string;
+      operatorSecretCode: string;
+    }) => {
+      await voidSaleRequest(params);
+      await loadAll(monthKey || undefined);
+    },
+    [loadAll, monthKey]
+  );
+
   return {
     presales,
     sales,
@@ -185,7 +210,9 @@ export function useSalesAndPresales() {
     updatePresaleNotes,
     addProductToCart,
     removeFromCart,
+    updateCartQuantity,
     clearCart,
     completeSale,
+    voidSale,
   };
 }

@@ -20,7 +20,7 @@ import {
   UpdateProductPayload,
 } from '@/interfaces/inventory.interface';
 import { ProductFormModal } from './ProductFormModal';
-import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { useBarcodeScanner, normalizeBarcode } from '@/hooks/useBarcodeScanner';
 import { useUiMode } from '@/hooks/useUiMode';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -237,15 +237,6 @@ export function InventoryStockTable({
               {pct}% &bull; {product.stock} de {product.minStock} uds
             </Badge>
           )}
-
-          <button
-            type="button"
-            onClick={() => openEditModal(product)}
-            className="text-[11px] font-bold text-neutral-500 underline-offset-2 hover:underline dark:text-[#C4B5BC]"
-            title="Clic para cambiar el límite de aviso de este producto"
-          >
-            Aviso al {limitPct}% (&le; {thresholdUnits} uds)
-          </button>
         </div>
 
         {/* Barra de Progreso Mejorada con Línea Divisoria al % Configurado */}
@@ -535,7 +526,7 @@ export function InventoryStockTable({
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               <Input
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(normalizeBarcode(e.target.value))}
                 placeholder="Buscar por nombre, código o SKU..."
                 className="h-9 border-neutral-300 bg-white pl-9 text-xs text-[#141213] dark:border-[#3A3035] dark:bg-[#181517] dark:text-white"
               />
@@ -734,53 +725,12 @@ export function InventoryStockTable({
                             {renderStockProgressBar(product)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              {product.stock < product.minStock && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="pink"
-                                  className={`gap-1 bg-[#ECCCD9] text-xs font-extrabold text-[#141213] hover:bg-[#E4BDD0] ${
-                                    isTouchMode ? 'h-10 px-3' : 'h-8'
-                                  }`}
-                                  onClick={() =>
-                                    void onAdjustStock({
-                                      productId: product.id,
-                                      newStock: product.minStock,
-                                      operatorUserId,
-                                      reason: `Abastecimiento al 100% (${product.minStock} uds)`,
-                                    })
-                                  }
-                                  title={`Subir stock a su tope 100% (${product.minStock} uds)`}
-                                >
-                                  <ArrowUpCircle className="h-3.5 w-3.5" />
-                                  <span>Al 100%</span>
-                                </Button>
-                              )}
-
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className={`text-xs font-extrabold dark:border-[#3A3035] dark:bg-[#252023] dark:text-[#ECCCD9] ${
-                                  isTouchMode ? 'h-10 px-3' : 'h-8'
-                                }`}
-                                onClick={() =>
-                                  void onAdjustStock({
-                                    productId: product.id,
-                                    newStock: product.stock + 20,
-                                    operatorUserId,
-                                    reason: 'Recarga rápida +20 unidades',
-                                  })
-                                }
-                              >
-                                +20 uds
-                              </Button>
-
+                            <div className="flex items-center justify-end gap-1.5">
                               <Input
                                 type="number"
-                                className={`w-20 border-neutral-300 bg-white text-xs text-[#141213] dark:border-[#3A3035] dark:bg-[#181517] dark:text-white ${
-                                  isTouchMode ? 'h-10' : 'h-8'
+                                min={0}
+                                className={`w-20 border-neutral-300 bg-white text-center text-xs font-bold text-[#141213] dark:border-[#3A3035] dark:bg-[#181517] dark:text-white ${
+                                  isTouchMode ? 'h-9' : 'h-8'
                                 }`}
                                 placeholder={String(product.stock)}
                                 value={stockInputMap[product.id] ?? ''}
@@ -790,13 +740,30 @@ export function InventoryStockTable({
                                     [product.id]: e.target.value,
                                   }))
                                 }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const raw = stockInputMap[product.id];
+                                    if (!raw) return;
+                                    void onAdjustStock({
+                                      productId: product.id,
+                                      newStock: Number(raw),
+                                      operatorUserId,
+                                      reason: 'Ajuste manual de stock en inventario',
+                                    });
+                                    setStockInputMap((prev) => ({
+                                      ...prev,
+                                      [product.id]: '',
+                                    }));
+                                  }
+                                }}
                               />
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 className={`text-xs font-bold dark:border-[#3A3035] dark:bg-[#252023] dark:text-white ${
-                                  isTouchMode ? 'h-10' : 'h-8'
+                                  isTouchMode ? 'h-9 px-3' : 'h-8 px-2.5'
                                 }`}
                                 onClick={() => {
                                   const raw = stockInputMap[product.id];
@@ -805,24 +772,26 @@ export function InventoryStockTable({
                                     productId: product.id,
                                     newStock: Number(raw),
                                     operatorUserId,
-                                    reason:
-                                      'Ajuste manual de stock en inventario',
+                                    reason: 'Ajuste manual de stock en inventario',
                                   });
+                                  setStockInputMap((prev) => ({
+                                    ...prev,
+                                    [product.id]: '',
+                                  }));
                                 }}
                               >
                                 <RefreshCw className="h-3 w-3" />
                                 Fijar
                               </Button>
-
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openEditModal(product)}
-                                className={`text-xs font-bold dark:border-[#3A3035] dark:bg-[#252023] dark:text-[#ECCCD9] ${
-                                  isTouchMode ? 'h-10' : 'h-8'
+                                className={`px-2.5 dark:border-[#3A3035] dark:bg-[#252023] dark:text-[#ECCCD9] ${
+                                  isTouchMode ? 'h-9' : 'h-8'
                                 }`}
-                                title="Editar producto y límite de aviso (%)"
+                                title="Editar producto, descripción y límite de aviso (%)"
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
                               </Button>
@@ -842,6 +811,7 @@ export function InventoryStockTable({
       <ProductFormModal
         isOpen={isModalOpen}
         editingProduct={editingProduct}
+        existingProducts={products}
         prefilledBarcode={prefilledBarcode}
         operatorUserId={operatorUserId}
         onClose={() => setIsModalOpen(false)}

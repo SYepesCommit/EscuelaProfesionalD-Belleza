@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { formatCop, formatDateTimeCo } from '@/lib/utils';
+import { printThermalHtml } from '@/lib/thermal-print';
 import {
   BiometricActionConfirmModal,
   AuthorizedUserResult,
@@ -61,6 +62,14 @@ interface CashRegisterData {
       totalCop: number;
     };
   };
+  salesToday?: {
+    id: string;
+    invoiceNumber: string;
+    clientName: string;
+    totalCop: number;
+    paymentMethod: string;
+    protectionRuleApplied: string;
+  }[];
 }
 
 export function CashRegisterModal({
@@ -164,7 +173,7 @@ export function CashRegisterModal({
                 Arqueo y Cierre Diario de Caja (Turno Z)
               </h2>
               <p className="text-xs text-neutral-600 dark:text-[#C4B5BC]">
-                Consolidación de Efectivo, Nequi y Tarjeta en Escuela Profesional D&apos; Belleza
+                Consolidación de Efectivo y Nequi / Transferencia en Escuela Profesional D&apos; Belleza
               </p>
             </div>
           </div>
@@ -192,7 +201,7 @@ export function CashRegisterModal({
 
           {/* Tarjetas de Resumen Consolidado */}
           {data && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
                 <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
                   Efectivo Esperado
@@ -207,14 +216,6 @@ export function CashRegisterModal({
                 </span>
                 <span className="text-base sm:text-lg font-black text-blue-800 dark:text-blue-400">
                   {formatCop(data.summary.expectedTransfCop)}
-                </span>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 text-center dark:border-[#332B2F] dark:bg-[#221D20]">
-                <span className="text-xs font-extrabold text-neutral-800 dark:text-[#E8DCE2] block">
-                  Tarjeta
-                </span>
-                <span className="text-base sm:text-lg font-black text-purple-800 dark:text-purple-400">
-                  {formatCop(data.summary.expectedCardCop)}
                 </span>
               </div>
               <div className="rounded-2xl border-2 border-[#E4BDD0] bg-[#ECCCD9]/40 p-3 text-center dark:border-[#3A3035] dark:bg-[#2A2226]">
@@ -266,6 +267,42 @@ export function CashRegisterModal({
                   </div>
                 </div>
               </div>
+
+              {/* Detalle de Transferencias, Nequi, Sistecrédito y Addi para Cuadre de Cuentas */}
+              {data.salesToday &&
+                data.salesToday.some((s) => s.paymentMethod === 'TRANSFERENCIA') && (
+                  <div className="mt-2 rounded-xl border border-blue-200 bg-blue-50/50 p-2.5 space-y-1.5 dark:border-blue-900/40 dark:bg-blue-950/20">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-blue-950 dark:text-blue-200">
+                      Detalle de Transferencias / Cuentas Recibidas Hoy:
+                    </div>
+                    <div className="max-h-28 overflow-y-auto divide-y divide-blue-200/60 dark:divide-blue-900/40 text-[11px]">
+                      {data.salesToday
+                        .filter((s) => s.paymentMethod === 'TRANSFERENCIA')
+                        .map((s) => {
+                          const refMatch = s.protectionRuleApplied.split('• Cuenta/Ref:')[1];
+                          return (
+                            <div
+                              key={s.id}
+                              className="flex items-center justify-between py-1 gap-2"
+                            >
+                              <div className="truncate">
+                                <strong className="font-mono">{s.invoiceNumber}</strong>{' '}
+                                &bull; {s.clientName}{' '}
+                                {refMatch && (
+                                  <span className="font-extrabold text-blue-800 dark:text-blue-300">
+                                    [{refMatch.trim()}]
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-black text-blue-900 dark:text-blue-200 shrink-0">
+                                {formatCop(s.totalCop)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
             </div>
           )}
 
@@ -450,7 +487,33 @@ export function CashRegisterModal({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    if (!closureResult) return;
+                    const html = `
+                      <div class="center">
+                        <div class="title">ESCUELA PROFESIONAL D' BELLEZA</div>
+                        <div class="subtitle bold">NIT: 900.584.219-4 • MEDELLÍN</div>
+                        <div class="bold" style="margin-top:4px;">*** CIERRE DIARIO (REPORTE Z) ***</div>
+                        <div class="subtitle">${formatDateTimeCo(closureResult.closedAt)}</div>
+                      </div>
+                      <div class="divider"></div>
+                      <div class="row"><span>Responsable:</span><span class="bold">${closureResult.closedBy}</span></div>
+                      <div class="row"><span>Efectivo Esperado:</span><span>${formatCop(expectedCash)}</span></div>
+                      <div class="row"><span>Efectivo Contado:</span><span class="bold">${formatCop(Number(physicalCashCop) || 0)}</span></div>
+                      <div class="row bold"><span>Cuadre:</span><span>${closureResult.statusText}</span></div>
+                      <div class="divider"></div>
+                      <div class="row"><span>Ventas Mostrador:</span><span>${formatCop(data?.breakdown.sales.totalCop ?? 0)}</span></div>
+                      <div class="row"><span>Abonos Alumnas:</span><span>${formatCop(data?.breakdown.studentPayments.totalCop ?? 0)}</span></div>
+                      <div class="row"><span>Multas Recaudadas:</span><span>${formatCop(data?.breakdown.fines.totalCop ?? 0)}</span></div>
+                      <div class="total-row">
+                        <span>GRAN TOTAL:</span>
+                        <span>${formatCop(data?.summary.grandTotalCop ?? 0)}</span>
+                      </div>
+                      <div class="divider"></div>
+                      <div class="footer">Registro sellado en Auditoría Forense EPB</div>
+                    `;
+                    printThermalHtml('Reporte_Z_EPB', html);
+                  }}
                   className="font-bold gap-1.5"
                 >
                   <Printer className="h-4 w-4" />

@@ -46,8 +46,10 @@ export function BiometricAccessScreen({
   isLoading,
   error,
   fingerprintConnected,
+  onLoginByCode,
   onLoginByFingerprint,
 }: BiometricAccessScreenProps) {
+  const [terminalAccessCode, setTerminalAccessCode] = useState('');
   // Estado para el Protocolo de Contingencia por Daño de Hardware y Fototrampa
   const [isContingencyModalOpen, setIsContingencyModalOpen] = useState(false);
   const [masterRecoveryKey, setMasterRecoveryKey] = useState('');
@@ -223,6 +225,45 @@ export function BiometricAccessScreen({
                 : 'Puede utilizar el banco de huellas registradas a continuación para ingresar al sistema.'}
             </p>
           </div>
+
+          {/* Modo Híbrido para PC de Ventas / Caja POS sin Huellero Físico Conectado */}
+          {onLoginByCode && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!terminalAccessCode.trim()) return;
+                void onLoginByCode(terminalAccessCode.trim().toUpperCase());
+              }}
+              className="rounded-2xl border border-[#E4BDD0] bg-white p-4 space-y-2.5 dark:border-[#3A3035] dark:bg-[#201C1E]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#141213] dark:text-white flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5 text-[#7A1E46] dark:text-[#ECCCD9]" />
+                  Acceso para PC de Ventas / POS (Sin Huellero USB en esta terminal)
+                </span>
+                <Badge variant="pink" className="text-[10px]">
+                  Modo Híbrido
+                </Badge>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  value={terminalAccessCode}
+                  onChange={(e) => setTerminalAccessCode(e.target.value)}
+                  placeholder="Ingrese su credencial de funcionario (Ej: ADMIN-01)"
+                  className="h-10 font-mono text-xs border-neutral-300 bg-[#FAF7F9] dark:border-[#3A3035] dark:bg-[#161315]"
+                />
+                <Button
+                  type="submit"
+                  variant="pink"
+                  disabled={isLoading || !terminalAccessCode.trim()}
+                  className="h-10 px-4 bg-[#ECCCD9] text-xs font-bold text-[#141213] shrink-0"
+                >
+                  Ingresar
+                </Button>
+              </div>
+            </form>
+          )}
 
           {/* Banco de Huellas de Funcionarios Registrados (SOLO ENTORNO DE DESARROLLO / PRUEBAS LOCALES) */}
           <div className="space-y-2 rounded-2xl border-2 border-amber-300/80 bg-amber-50/70 p-3.5 dark:border-amber-900/60 dark:bg-amber-950/20">

@@ -30,7 +30,11 @@ interface PayFineModalProps {
     paymentReference: string;
     paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'MIXTO';
   }) => Promise<void>;
-  onCancelFine?: (payload: { fineId: string; reason: string }) => Promise<void>;
+  onCancelFine?: (payload: {
+    fineId: string;
+    reason: string;
+    rescheduledScheduleId?: string;
+  }) => Promise<void>;
 }
 
 export function PayFineModal({
@@ -44,7 +48,7 @@ export function PayFineModal({
   onSubmit,
   onCancelFine,
 }: PayFineModalProps) {
-  const [mode, setMode] = useState<'PAY' | 'CANCEL'>('PAY');
+  const [mode, setMode] = useState<'PAY' | 'RELOCATE_FREE' | 'SKIP_CLASS'>('PAY');
   const [rescheduledScheduleId, setRescheduledScheduleId] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<
@@ -69,13 +73,17 @@ export function PayFineModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (mode === 'CANCEL') {
+    if (mode === 'RELOCATE_FREE' || mode === 'SKIP_CLASS') {
+      if (mode === 'RELOCATE_FREE' && !rescheduledScheduleId) {
+        setErrorMsg('Seleccione a qué salón/clase desea reubicar a la estudiante.');
+        return;
+      }
       if (!cancellationReason.trim()) {
-        setErrorMsg('Debe ingresar obligatoriamente el motivo de la anulación o condonación.');
+        setErrorMsg('Debe ingresar el motivo para reubicar o saltar esta clase.');
         return;
       }
       if (!onCancelFine) {
-        setErrorMsg('Operación de anulación no configurada.');
+        setErrorMsg('Operación no configurada.');
         return;
       }
 
@@ -84,11 +92,16 @@ export function PayFineModal({
       try {
         await onCancelFine({
           fineId: fine.id,
-          reason: cancellationReason.trim(),
+          reason:
+            mode === 'SKIP_CLASS'
+              ? `[CLASE SALTADA] ${cancellationReason.trim()}`
+              : `[REUBICADA SIN MULTA] ${cancellationReason.trim()}`,
+          rescheduledScheduleId:
+            mode === 'RELOCATE_FREE' ? rescheduledScheduleId : undefined,
         });
         onClose();
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : 'Error al anular multa');
+        setErrorMsg(err instanceof Error ? err.message : 'Error al procesar clase');
       } finally {
         setIsBusy(false);
       }
@@ -131,12 +144,12 @@ export function PayFineModal({
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-sm ${
-                mode === 'CANCEL'
+                mode !== 'PAY'
                   ? 'bg-amber-600 text-white'
                   : 'bg-emerald-600 text-white'
               }`}
             >
-              {mode === 'CANCEL' ? (
+              {mode !== 'PAY' ? (
                 <ShieldAlert className="h-5 w-5" />
               ) : (
                 <DollarSign className="h-5 w-5" />
@@ -144,12 +157,14 @@ export function PayFineModal({
             </div>
             <div>
               <span className="rounded-full bg-[#ECCCD9] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#141213]">
-                Gestión de Multas EPB
+                Gestión de Inasistencias y Clases EPB
               </span>
               <h3 className="mt-0.5 font-serif text-base font-bold text-[#141213] dark:text-[#F5EEF1]">
-                {mode === 'CANCEL'
-                  ? 'Anular o Condonar Multa'
-                  : 'Cobrar Multa y Reprogramar Clase'}
+                {mode === 'RELOCATE_FREE'
+                  ? 'Reubicar Clase (Sin Cobro de Multa)'
+                  : mode === 'SKIP_CLASS'
+                    ? 'Saltar Clase y Desbloquear Alumna'
+                    : 'Cobrar Multa y Reubicar Clase'}
               </h3>
             </div>
           </div>
@@ -162,31 +177,42 @@ export function PayFineModal({
           </button>
         </div>
 
-        {/* Toggle para Modo Administrador */}
+        {/* Toggle de 3 Modos: Cobrar + Reubicar | Reubicar sin Multa | Saltar Clase */}
         {isAdmin && onCancelFine && (
-          <div className="flex border-b border-neutral-200 bg-[#FAF8F9] px-5 py-2.5 dark:border-[#332B2F] dark:bg-[#201B1E]">
-            <div className="flex w-full rounded-xl bg-neutral-200/80 p-1 dark:bg-[#151214]">
+          <div className="flex border-b border-neutral-200 bg-[#FAF8F9] px-4 py-2.5 dark:border-[#332B2F] dark:bg-[#201B1E]">
+            <div className="grid grid-cols-3 gap-1 w-full rounded-xl bg-neutral-200/80 p-1 dark:bg-[#151214]">
               <button
                 type="button"
                 onClick={() => setMode('PAY')}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
+                className={`rounded-lg py-1.5 px-2 text-[11px] font-black transition ${
                   mode === 'PAY'
                     ? 'bg-white text-[#141213] shadow-xs dark:bg-[#282125] dark:text-white'
                     : 'text-neutral-600 dark:text-[#B8A8B0]'
                 }`}
               >
-                Cobro y Reposición Normal
+                1. Cobrar y Reubicar
               </button>
               <button
                 type="button"
-                onClick={() => setMode('CANCEL')}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
-                  mode === 'CANCEL'
-                    ? 'bg-amber-500 text-[#141213] shadow-xs'
+                onClick={() => setMode('RELOCATE_FREE')}
+                className={`rounded-lg py-1.5 px-2 text-[11px] font-black transition ${
+                  mode === 'RELOCATE_FREE'
+                    ? 'bg-amber-400 text-[#141213] shadow-xs'
                     : 'text-neutral-600 dark:text-[#B8A8B0]'
                 }`}
               >
-                Condonar / Anular Multa (Admin)
+                2. Reubicar sin Multa
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('SKIP_CLASS')}
+                className={`rounded-lg py-1.5 px-2 text-[11px] font-black transition ${
+                  mode === 'SKIP_CLASS'
+                    ? 'bg-emerald-500 text-[#141213] shadow-xs'
+                    : 'text-neutral-600 dark:text-[#B8A8B0]'
+                }`}
+              >
+                3. Saltar Clase
               </button>
             </div>
           </div>
@@ -222,25 +248,57 @@ export function PayFineModal({
             </p>
           </div>
 
-          {mode === 'CANCEL' ? (
-            /* Modo Condonación / Anulación */
+          {mode === 'RELOCATE_FREE' || mode === 'SKIP_CLASS' ? (
+            /* Modo 2 (Reubicar sin Multa) o Modo 3 (Saltar Clase) */
             <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50/60 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
               <div className="flex items-center gap-2 text-xs font-black text-amber-900 dark:text-amber-300">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                <span>Autorización Especial de Condonación</span>
+                <span>
+                  {mode === 'RELOCATE_FREE'
+                    ? 'Reubicar a la Alumna en Otra Clase (Exonerando Multa)'
+                    : 'Saltar esta Clase y Continuar Programa (Sin Reprogramar)'}
+                </span>
               </div>
               <p className="text-xs text-amber-800 dark:text-amber-200">
-                La multa quedará en estado <strong>ANULADA</strong>, no se exigirá
-                comprobante de pago y, si la alumna no tiene más deudas, se desbloqueará de inmediato.
+                {mode === 'RELOCATE_FREE'
+                  ? 'Se exonera el pago de $40.000 COP, se inscribe a la estudiante en el nuevo horario elegido abajo y queda desbloqueada.'
+                  : 'La estudiante salta esta clase sin obligación de reprogramarla ni pagar multa, quedando desbloqueada de inmediato.'}
               </p>
+
+              {mode === 'RELOCATE_FREE' && (
+                <div className="space-y-1.5 pt-1">
+                  <Label className="text-xs font-black text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                    <CalendarCheck className="h-4 w-4" />
+                    <span>Nuevo Salón y Horario para Reubicar *</span>
+                  </Label>
+                  <select
+                    required
+                    className="flex h-10 w-full rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-[#141213] dark:border-amber-800 dark:bg-[#191517] dark:text-white"
+                    value={rescheduledScheduleId}
+                    onChange={(e) => setRescheduledScheduleId(e.target.value)}
+                  >
+                    <option value="">Seleccione el salón y horario donde verá la clase...</option>
+                    {schedules.map((sch) => (
+                      <option key={sch.id} value={sch.id}>
+                        {sch.roomName} — {sch.title} ({sch.courseName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="space-y-1.5 pt-1">
                 <Label className="text-xs font-black text-amber-950 dark:text-amber-200">
-                  Justificación Obligatoria *
+                  Motivo / Autorización *
                 </Label>
                 <Input
                   value={cancellationReason}
                   onChange={(e) => setCancellationReason(e.target.value)}
-                  placeholder="Ej: Incapacidad médica certificada por EPS / Autorización de Rectoría"
+                  placeholder={
+                    mode === 'SKIP_CLASS'
+                      ? 'Ej: Tema ya visto por homologación / Autorizado saltar clase'
+                      : 'Ej: Excusa médica / Reubicación autorizada por coordinación'
+                  }
                   className="h-10 text-xs border-amber-300 bg-white font-semibold text-neutral-900 dark:border-amber-800 dark:bg-[#191517] dark:text-white"
                   required
                 />
@@ -289,7 +347,6 @@ export function PayFineModal({
                   >
                     <option value="EFECTIVO">EFECTIVO</option>
                     <option value="TRANSFERENCIA">TRANSFERENCIA (Nequi / Bancolombia)</option>
-                    <option value="TARJETA">TARJETA DÉBITO / CRÉDITO</option>
                     <option value="MIXTO">MIXTO</option>
                   </select>
                 </div>
@@ -326,17 +383,21 @@ export function PayFineModal({
               variant="pink"
               disabled={isBusy}
               className={`h-10 gap-1.5 px-5 font-black text-[#141213] ${
-                mode === 'CANCEL'
+                mode === 'RELOCATE_FREE'
                   ? 'bg-amber-400 hover:bg-amber-500'
-                  : 'bg-[#ECCCD9] hover:bg-[#E4BDD0]'
+                  : mode === 'SKIP_CLASS'
+                    ? 'bg-emerald-400 hover:bg-emerald-500'
+                    : 'bg-[#ECCCD9] hover:bg-[#E4BDD0]'
               }`}
             >
               <CheckCircle2 className="h-4 w-4" />
               {isBusy
                 ? 'Procesando...'
-                : mode === 'CANCEL'
-                  ? 'Confirmar Condonación'
-                  : `Liquidar y Reprogramar (${formatCop(fine.amountCop)})`}
+                : mode === 'RELOCATE_FREE'
+                  ? 'Confirmar Reubicación sin Multa'
+                  : mode === 'SKIP_CLASS'
+                    ? 'Confirmar Salto de Clase'
+                    : `Liquidar y Reubicar (${formatCop(fine.amountCop)})`}
             </Button>
           </div>
         </form>

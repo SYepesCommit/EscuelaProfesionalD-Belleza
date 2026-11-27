@@ -27,6 +27,7 @@ import { formatCop } from '@/lib/utils';
 interface ProductFormModalProps {
   isOpen: boolean;
   editingProduct: ProductItem | null;
+  existingProducts?: ProductItem[];
   prefilledBarcode?: string;
   operatorUserId: string;
   onClose: () => void;
@@ -34,7 +35,7 @@ interface ProductFormModalProps {
   onUpdate: (payload: UpdateProductPayload) => Promise<void>;
 }
 
-const CATEGORY_PRESETS = [
+const DEFAULT_CATEGORIES = [
   'Uñas y Nail Art',
   'Colorimetría',
   'Estética Facial',
@@ -43,11 +44,14 @@ const CATEGORY_PRESETS = [
   'Kits Académicos',
 ];
 
+const CATEGORIES_STORAGE_KEY = 'epb_product_categories';
+
 const ALERT_PERCENT_PRESETS = [15, 20, 25, 30, 40, 50];
 
 export function ProductFormModal({
   isOpen,
   editingProduct,
+  existingProducts = [],
   prefilledBarcode,
   operatorUserId,
   onClose,
@@ -55,9 +59,12 @@ export function ProductFormModal({
   onUpdate,
 }: ProductFormModalProps) {
   const [barcode, setBarcode] = useState('');
+  const [linkedExistingId, setLinkedExistingId] = useState<string>('');
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Uñas y Nail Art');
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [priceCop, setPriceCop] = useState<number>(45000);
   const [costCop, setCostCop] = useState<number>(22000);
   const [stock, setStock] = useState<number>(40);
@@ -67,12 +74,53 @@ export function ProductFormModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CATEGORIES_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCategories(parsed);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const saveCategoriesList = (next: string[]) => {
+    setCategories(next);
+    try {
+      window.localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const handleAddCategory = () => {
+    const clean = category.trim();
+    if (!clean) return;
+    if (!categories.includes(clean)) {
+      saveCategoriesList([...categories, clean]);
+    }
+  };
+
+  const handleDeleteCategory = (catToRemove: string) => {
+    const next = categories.filter((c) => c !== catToRemove);
+    saveCategoriesList(next);
+    if (category === catToRemove) {
+      setCategory(next[0] ?? '');
+    }
+  };
+
+  useEffect(() => {
     if (!isOpen) return;
     setErrorMsg(null);
+    setLinkedExistingId('');
     if (editingProduct) {
       setBarcode(editingProduct.barcode);
       setSku(editingProduct.sku);
       setName(editingProduct.name);
+      setDescription(editingProduct.description ?? '');
       setCategory(editingProduct.category);
       setPriceCop(editingProduct.priceCop);
       setCostCop(editingProduct.costCop);
@@ -85,6 +133,7 @@ export function ProductFormModal({
       setBarcode(prefilledBarcode || '');
       setSku('');
       setName('');
+      setDescription('');
       setCategory('Uñas y Nail Art');
       setPriceCop(45000);
       setCostCop(22000);
@@ -93,6 +142,28 @@ export function ProductFormModal({
       setAlertPercent(30);
     }
   }, [isOpen, editingProduct, prefilledBarcode]);
+
+  const handleLinkToExistingProduct = (productId: string) => {
+    setLinkedExistingId(productId);
+    if (!productId) {
+      setSku('');
+      setName('');
+      setDescription('');
+      return;
+    }
+    const found = existingProducts.find((p) => p.id === productId);
+    if (found) {
+      setSku(found.sku);
+      setName(found.name);
+      setDescription(found.description ?? '');
+      setCategory(found.category);
+      setPriceCop(found.priceCop);
+      setCostCop(found.costCop);
+      setStock(found.stock);
+      setBaseCapacity(Math.max(found.minStock, found.stock, 10));
+      setAlertPercent(found.alertPercent ?? 30);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -124,8 +195,8 @@ export function ProductFormModal({
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!barcode.trim() || !sku.trim() || !name.trim() || !category.trim()) {
-      setErrorMsg('Complete el código de barras, SKU, nombre y categoría.');
+    if (!barcode.trim() || !name.trim() || !category.trim()) {
+      setErrorMsg('Complete el código de barras, nombre y categoría.');
       return;
     }
 
@@ -135,6 +206,7 @@ export function ProductFormModal({
         barcode: barcode.trim(),
         sku: sku.trim().toUpperCase(),
         name: name.trim(),
+        description: description.trim() || null,
         category: category.trim(),
         priceCop: Math.max(100, Math.round(numPrice)),
         costCop: Math.max(0, Math.round(numCost)),
@@ -144,8 +216,9 @@ export function ProductFormModal({
         operatorUserId,
       };
 
-      if (editingProduct) {
-        await onUpdate({ ...payload, id: editingProduct.id });
+      const targetUpdateId = editingProduct?.id || linkedExistingId;
+      if (targetUpdateId) {
+        await onUpdate({ ...payload, id: targetUpdateId });
       } else {
         await onCreate(payload);
       }
@@ -217,6 +290,36 @@ export function ProductFormModal({
             </div>
           )}
 
+          {/* Pregunta inteligente cuando se escanea un código de barras no reconocido */}
+          {!editingProduct && existingProducts.length > 0 && (
+            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/80 p-3.5 space-y-2 dark:border-amber-700/60 dark:bg-amber-950/30">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-black text-amber-950 dark:text-amber-200">
+                  ¿Es un producto nuevo o un producto existente que cambió de código de barras?
+                </span>
+              </div>
+              <select
+                value={linkedExistingId}
+                onChange={(e) => handleLinkToExistingProduct(e.target.value)}
+                className="flex h-10 w-full rounded-xl border border-amber-400 bg-white px-3 text-xs font-bold text-[#141213] dark:border-amber-700 dark:bg-[#161315] dark:text-white"
+              >
+                <option value="">✨ Es un Producto Nuevo (Registrar desde cero)</option>
+                <optgroup label="🔄 Es un producto existente (Actualizar su código de barras):">
+                  {existingProducts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (Cód. anterior: {p.barcode} • Stock: {p.stock} uds)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {linkedExistingId && (
+                <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                  ✓ Se actualizará el producto seleccionado con el nuevo código de barras ({barcode}) conservando su historial.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Bloque 1: Identificación y Nombre */}
           <div className="rounded-2xl border border-neutral-200/90 bg-[#FAF8F9] p-4 space-y-3.5 dark:border-[#332B2F] dark:bg-[#201B1E]">
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
@@ -237,14 +340,13 @@ export function ProductFormModal({
               <div className="flex flex-col">
                 <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-[#141213] dark:text-[#ECCCD9]">
                   <Tag className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">Referencia / SKU Interno *</span>
+                  <span className="truncate">Referencia / SKU Interno (Opcional)</span>
                 </label>
                 <Input
                   value={sku}
                   onChange={(e) => setSku(e.target.value.toUpperCase())}
-                  placeholder="Ej: EPB-KIT-ACR"
+                  placeholder="Opcional (ej: EPB-KIT-ACR)"
                   className="h-10 font-mono text-sm font-bold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
-                  required
                 />
               </div>
             </div>
@@ -264,31 +366,68 @@ export function ProductFormModal({
 
             <div className="flex flex-col">
               <label className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider text-[#141213] dark:text-[#ECCCD9]">
+                Descripción del Producto (Opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Ej: Presentación 500ml, incluye activador y brocha..."
+                className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-[#141213] outline-none transition focus:border-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white dark:focus:border-[#ECCCD9]"
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider text-[#141213] dark:text-[#ECCCD9]">
                 Categoría *
               </label>
-              <Input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Escriba o seleccione una categoría abajo"
-                className="h-10 text-sm font-semibold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
-                required
-              />
+              <div className="flex gap-2">
+                <Input
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Escriba una nueva categoría o seleccione abajo"
+                  className="h-10 text-sm font-semibold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                  required
+                />
+                {category.trim() && !categories.includes(category.trim()) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddCategory}
+                    className="h-10 shrink-0 border-[#141213] bg-[#ECCCD9]/60 px-3 text-xs font-extrabold text-[#141213] hover:bg-[#ECCCD9]"
+                  >
+                    + Guardar Categoría
+                  </Button>
+                )}
+              </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {CATEGORY_PRESETS.map((cat) => {
+                {categories.map((cat) => {
                   const active = category === cat;
                   return (
-                    <button
+                    <div
                       key={cat}
-                      type="button"
-                      onClick={() => setCategory(cat)}
-                      className={`rounded-full border px-3 py-1 text-[11px] font-extrabold transition ${
+                      className={`inline-flex items-center gap-1 rounded-full border pl-3 pr-1.5 py-1 text-[11px] font-extrabold transition ${
                         active
                           ? 'border-[#141213] bg-[#ECCCD9] text-[#141213] shadow-2xs'
                           : 'border-neutral-300 bg-white text-neutral-700 hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-[#E5D8DF]'
                       }`}
                     >
-                      {cat}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategory(cat)}
+                        className="leading-none"
+                      >
+                        {cat}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat)}
+                        title={`Eliminar categoría ${cat}`}
+                        className="ml-0.5 rounded-full p-0.5 text-neutral-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>

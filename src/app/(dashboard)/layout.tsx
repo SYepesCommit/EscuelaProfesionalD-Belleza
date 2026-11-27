@@ -128,6 +128,7 @@ export default function DashboardLayout({
 
   const {
     user,
+    isInitializing,
     isLoading,
     error,
     handleLoginByCode,
@@ -142,6 +143,12 @@ export default function DashboardLayout({
       }
     },
   });
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen w-full bg-[#FAF6F8] dark:bg-[#141213]" />
+    );
+  }
 
   if (!user) {
     return (

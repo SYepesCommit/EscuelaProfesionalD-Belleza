@@ -12,6 +12,7 @@ const createSaleSchema = z.object({
   clientDocument: z.string().optional(),
   clientName: z.string().min(2),
   paymentMethod: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'MIXTO']),
+  paymentAccountInfo: z.string().optional(),
   discountCop: z.number().int().nonnegative().default(0),
   items: z
     .array(
@@ -21,6 +22,12 @@ const createSaleSchema = z.object({
       })
     )
     .min(1),
+});
+
+const voidSaleSchema = z.object({
+  saleId: z.string().min(1),
+  voidReason: z.string().min(3, 'Debe indicar el motivo del reverso o cambio de producto'),
+  operatorSecretCode: z.string().min(2),
 });
 
 export async function GET() {
@@ -192,6 +199,9 @@ export async function POST(request: Request) {
       );
 
       const invoiceNumber = `EPB-${Date.now().toString().slice(-6)}`;
+      const fullProtectionNote = data.paymentAccountInfo?.trim()
+        ? `${protectionRuleApplied} • Cuenta/Ref: ${data.paymentAccountInfo.trim()}`
+        : protectionRuleApplied;
 
       const sale = await tx.sale.create({
         data: {
@@ -201,7 +211,7 @@ export async function POST(request: Request) {
           clientDocument: data.clientDocument || null,
           closingSellerId: closingSeller.id,
           commissionedSellerId: commissionedSeller.id,
-          protectionRuleApplied,
+          protectionRuleApplied: fullProtectionNote,
           subtotalCop,
           discountCop: data.discountCop,
           totalCop,
@@ -282,6 +292,102 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Error procesando venta' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Reverso de Compra / Nota Crédito Interna (VOID_SALE):
+ * Anula una factura por cambio de producto o error antes/después de emitir,
+ * devuelve automáticamente las unidades al stock del inventario y anula la comisión.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const body: unknown = await request.json();
+    const parsed = voidSaleSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { message: parsed.error.issues[0]?.message || 'Datos de reverso inválidos' },
+        { status: 400 }
+      );
+    }
+
+    const { saleId, voidReason, operatorSecretCode } = parsed.data;
+
+    const operator = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { sellerSecretCode: operatorSecretCode.trim().toUpperCase() },
+          { accessCode: operatorSecretCode.trim().toUpperCase() },
+          { id: operatorSecretCode.trim() },
+        ],
+      },
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existingSale = await tx.sale.findUniqueOrThrow({
+        where: { id: saleId },
+        include: { items: true },
+      });
+
+      if (existingSale.status === 'ANULADA') {
+        throw new Error('Esta factura ya fue reversada anteriormente.');
+      }
+
+      // 1. Devolver unidades al inventario automáticamente
+      for (const item of existingSale.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: { increment: item.quantity },
+          },
+        });
+      }
+
+      // 2. Retirar comisión para no liquidar comisiones de ventas reversadas
+      await tx.commission.deleteMany({
+        where: { saleId: existingSale.id },
+      });
+
+      // 3. Marcar factura como ANULADA (Nota Crédito / Reverso)
+      const updatedSale = await tx.sale.update({
+        where: { id: existingSale.id },
+        data: {
+          status: 'ANULADA',
+          commissionAmountCop: 0,
+          protectionRuleApplied: `[REVERSADA / NOTA CRÉDITO: ${voidReason.trim()}] • ${existingSale.protectionRuleApplied}`,
+        },
+      });
+
+      await recordAuditLog(
+        {
+          userId: operator?.id ?? existingSale.closingSellerId,
+          action: 'VOID_SALE',
+          entity: 'Sale',
+          entityId: existingSale.id,
+          previousData: {
+            status: 'COMPLETADA',
+            totalCop: existingSale.totalCop,
+          },
+          newData: {
+            status: 'ANULADA',
+            invoiceNumber: existingSale.invoiceNumber,
+            voidReason: voidReason.trim(),
+            operatorName: operator?.fullName ?? 'Administrador',
+          },
+        },
+        tx
+      );
+
+      return updatedSale;
+    });
+
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : 'Error reversando factura' },
       { status: 500 }
     );
   }

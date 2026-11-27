@@ -86,6 +86,7 @@ export interface CancelFinePayload {
   action: 'CANCEL_FINE';
   fineId: string;
   reason: string;
+  rescheduledScheduleId?: string;
   operatorUserId: string;
 }
 

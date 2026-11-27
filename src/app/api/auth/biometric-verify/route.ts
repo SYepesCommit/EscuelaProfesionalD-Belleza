@@ -23,11 +23,17 @@ export async function POST(request: Request) {
 
     const { template, requiredRoles } = parsed.data;
 
-    // Buscar usuario cuya huella dactilar coincida
+    const cleanInput = template.trim();
+
+    // Buscar usuario por plantilla de huella USB o por credencial de terminal sin huellero
     const user = await prisma.user.findFirst({
       where: {
-        fingerprintTemplate: template.trim(),
         isActive: true,
+        OR: [
+          { fingerprintTemplate: cleanInput },
+          { accessCode: cleanInput.toUpperCase() },
+          { sellerSecretCode: cleanInput.toUpperCase() },
+        ],
       },
     });
 

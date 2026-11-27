@@ -7,8 +7,9 @@ import { ProductItem } from '@/interfaces/inventory.interface';
 
 const createProductSchema = z.object({
   barcode: z.string().min(3, 'Código de barras demasiado corto'),
-  sku: z.string().min(2, 'SKU demasiado corto'),
+  sku: z.string().optional().default(''),
   name: z.string().min(3, 'Nombre demasiado corto'),
+  description: z.string().optional().nullable(),
   category: z.string().min(2, 'Categoría requerida'),
   priceCop: z.number().int().positive('El precio debe ser mayor a 0'),
   costCop: z.number().int().nonnegative(),
@@ -41,6 +42,7 @@ function mapProductWithConfigurableRule(p: {
   barcode: string;
   sku: string;
   name: string;
+  description?: string | null;
   category: string;
   priceCop: number;
   costCop: number;
@@ -70,6 +72,7 @@ function mapProductWithConfigurableRule(p: {
     barcode: p.barcode,
     sku: p.sku,
     name: p.name,
+    description: p.description ?? null,
     category: p.category,
     priceCop: p.priceCop,
     costCop: p.costCop,
@@ -159,8 +162,9 @@ export async function POST(request: Request) {
       const product = await tx.product.create({
         data: {
           barcode: data.barcode.trim(),
-          sku: data.sku.trim().toUpperCase(),
+          sku: data.sku?.trim() ? data.sku.trim().toUpperCase() : `SKU-${data.barcode.trim()}`,
           name: data.name.trim(),
+          description: data.description?.trim() || null,
           category: data.category.trim(),
           priceCop: data.priceCop,
           costCop: data.costCop,
@@ -233,8 +237,9 @@ export async function PUT(request: Request) {
         where: { id: data.id },
         data: {
           barcode: data.barcode.trim(),
-          sku: data.sku.trim().toUpperCase(),
+          sku: data.sku?.trim() ? data.sku.trim().toUpperCase() : `SKU-${data.barcode.trim()}`,
           name: data.name.trim(),
+          description: data.description?.trim() || null,
           category: data.category.trim(),
           priceCop: data.priceCop,
           costCop: data.costCop,

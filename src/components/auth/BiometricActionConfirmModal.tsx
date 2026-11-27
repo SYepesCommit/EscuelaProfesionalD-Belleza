@@ -58,6 +58,7 @@ export function BiometricActionConfirmModal({
   const [isVerifying, setIsVerifying] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [successUser, setSuccessUser] = useState<AuthorizedUserResult | null>(null);
+  const [manualTerminalCode, setManualTerminalCode] = useState('');
 
   const { state: fpState, requestScan, simulateBiometricCapture } = useFingerprint({
     autoConnect: isOpen,
@@ -200,6 +201,32 @@ export function BiometricActionConfirmModal({
               <Fingerprint className="h-4 w-4" />
               <span>Escanear Huella en Lector Físico</span>
             </Button>
+          </div>
+
+          {/* Respaldo Híbrido para Terminal POS / Ventas sin Huellero USB Conectado */}
+          <div className="rounded-2xl border border-neutral-200 bg-[#FAF7F9] p-3 space-y-2 dark:border-[#332B2F] dark:bg-[#201C1E]">
+            <span className="text-[11px] font-bold text-neutral-700 dark:text-[#C4B5BC] block">
+              ¿Terminal POS/Ventas sin huellero USB? Valide con su credencial:
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={manualTerminalCode}
+                onChange={(e) => setManualTerminalCode(e.target.value)}
+                placeholder="Credencial (Ej: ADMIN-01 o SEC-ADMIN)"
+                className="flex-1 h-9 rounded-xl border border-neutral-300 bg-white px-3 font-mono text-xs text-[#141213] outline-none dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="pink"
+                disabled={isVerifying || !manualTerminalCode.trim()}
+                onClick={() => void handleVerifyTemplate(manualTerminalCode.trim())}
+                className="h-9 bg-[#ECCCD9] px-3 text-xs font-bold text-[#141213]"
+              >
+                Validar
+              </Button>
+            </div>
           </div>
 
           {/* Banco de Huellas de Personal Autorizado (SOLO ENTORNO DE DESARROLLO / PRUEBAS) */}

@@ -15,7 +15,8 @@ const payAndRescheduleSchema = z.object({
 const cancelFineSchema = z.object({
   action: z.literal('CANCEL_FINE'),
   fineId: z.string().min(1),
-  reason: z.string().min(3, 'Indique el motivo de anulación o condonación'),
+  reason: z.string().min(3, 'Indique el motivo de reubicación, salto de clase o condonación'),
+  rescheduledScheduleId: z.string().optional(),
   operatorUserId: z.string().min(1),
 });
 
@@ -56,7 +57,7 @@ export async function PATCH(request: Request) {
         );
       }
 
-      const { fineId, reason, operatorUserId } = parsed.data;
+      const { fineId, reason, rescheduledScheduleId, operatorUserId } = parsed.data;
 
       const result = await prisma.$transaction(async (tx) => {
         const existingFine = await tx.fine.findUniqueOrThrow({
@@ -72,9 +73,30 @@ export async function PATCH(request: Request) {
           where: { id: fineId },
           data: {
             status: 'ANULADA',
-            reason: `Anulada/Condonada: ${reason}`,
+            isClassRescheduled: true,
+            rescheduledScheduleId: rescheduledScheduleId || null,
+            reason: rescheduledScheduleId
+              ? `Reubicada sin multa: ${reason}`
+              : `Clase Saltada / Exonerada: ${reason}`,
           },
         });
+
+        // Si se eligió un salón/horario para reubicar la clase sin cobrar multa, inscribirla:
+        if (rescheduledScheduleId) {
+          await tx.studentEnrollment.upsert({
+            where: {
+              scheduleId_studentId: {
+                scheduleId: rescheduledScheduleId,
+                studentId: existingFine.studentId,
+              },
+            },
+            update: {},
+            create: {
+              scheduleId: rescheduledScheduleId,
+              studentId: existingFine.studentId,
+            },
+          });
+        }
 
         // Verificar si quedan otras multas pendientes para este estudiante
         const remainingOpenFines = await tx.fine.count({

@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StudentItem } from '@/interfaces/student.interface';
 import { formatCop } from '@/lib/utils';
+import { printThermalHtml } from '@/lib/thermal-print';
 
 interface RegisterStudentPaymentModalProps {
   isOpen: boolean;
@@ -36,10 +37,9 @@ interface RegisterStudentPaymentModalProps {
   }>;
 }
 
-const PAYMENT_METHODS: Array<'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'MIXTO'> = [
+const PAYMENT_METHODS: Array<'EFECTIVO' | 'TRANSFERENCIA' | 'MIXTO'> = [
   'EFECTIVO',
   'TRANSFERENCIA',
-  'TARJETA',
   'MIXTO',
 ];
 
@@ -117,7 +117,36 @@ export function RegisterStudentPaymentModal({
   };
 
   const handlePrintReceipt = () => {
-    window.print();
+    if (!completedVoucher) return;
+    const html = `
+      <div class="center">
+        <div class="title">ESCUELA PROFESIONAL D' BELLEZA</div>
+        <div class="subtitle bold">NIT: 900.584.219-4 • MEDELLÍN</div>
+        <div class="bold" style="margin-top:4px;">*** COMPROBANTE DE ABONO ***</div>
+        <div class="bold">No. ${completedVoucher.receiptNumber}</div>
+        <div class="subtitle">${completedVoucher.date}</div>
+      </div>
+      <div class="divider"></div>
+      <div class="row"><span>Alumna:</span><span class="bold">${student.fullName}</span></div>
+      <div class="row"><span>Documento:</span><span>${student.documentId}</span></div>
+      <div class="row"><span>Programa:</span><span>${student.programName}</span></div>
+      <div class="row"><span>Concepto:</span><span>${concept}</span></div>
+      <div class="row"><span>Medio Pago:</span><span class="bold">${paymentMethod}</span></div>
+      ${paymentReference ? `<div class="row"><span>Referencia:</span><span>${paymentReference}</span></div>` : ''}
+      <div class="row"><span>Cajero:</span><span>${operatorName}</span></div>
+      <div class="divider"></div>
+      <div class="total-row">
+        <span>MONTO RECIBIDO:</span>
+        <span>${formatCop(completedVoucher.amountPaid)}</span>
+      </div>
+      <div class="row bold" style="margin-top:4px;">
+        <span>Saldo Restante:</span>
+        <span>${formatCop(completedVoucher.newBalance)}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="footer">Conserve este recibo como soporte de pago académico.</div>
+    `;
+    printThermalHtml(`Recibo_${completedVoucher.receiptNumber}`, html);
   };
 
   return (

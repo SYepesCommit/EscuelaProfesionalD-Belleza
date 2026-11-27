@@ -1065,6 +1065,7 @@ export function BiometricAttendanceTerminal({
                     action: 'CANCEL_FINE',
                     fineId: payload.fineId,
                     reason: payload.reason,
+                    rescheduledScheduleId: payload.rescheduledScheduleId,
                     operatorUserId,
                   });
                   setActiveFineStudent(null);

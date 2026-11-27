@@ -146,6 +146,55 @@ html.dark select {
   border-color: #42373C !important;
 }
 
+/* Suavizado tipográfico global: evita que los textos se vean excesivamente gruesos o pesados */
+.font-black {
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+}
+
+.font-extrabold {
+  font-weight: 600 !important;
+}
+
+.font-bold {
+  font-weight: 600 !important;
+}
+
+html:not(.dark) .text-\[\#141213\],
+html:not(.dark) .text-\[\#1A1A1A\],
+html:not(.dark) .text-\[\#222222\] {
+  color: #2B2528;
+}
+
+/* ============================================================================
+   ESTILO GLOBAL SISTEMA POS TÁCTIL (html.pos-touch-mode)
+   Transforma toda la aplicación en una terminal Punto de Venta de mostrador:
+   aprovecha el 100% del ancho de pantalla, agranda áreas táctiles y usa
+   números tabulares de lectura rápida.
+   ============================================================================ */
+html.pos-touch-mode {
+  font-variant-numeric: tabular-nums;
+}
+
+html.pos-touch-mode main {
+  padding: 0.65rem 0.85rem !important;
+}
+
+html.pos-touch-mode input:not([type='checkbox']),
+html.pos-touch-mode select {
+  min-height: 2.75rem !important;
+  font-size: 0.875rem !important;
+  border-width: 1.5px !important;
+}
+
+html.pos-touch-mode button {
+  transition: transform 0.08s ease, background-color 0.15s ease !important;
+}
+
+html.pos-touch-mode button:active {
+  transform: scale(0.97);
+}
+
 /* Custom sleek scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

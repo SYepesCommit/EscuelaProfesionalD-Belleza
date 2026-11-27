@@ -39,6 +39,7 @@ export function UiModeProvider({ children }: { children: React.ReactNode }) {
       ) as UiDisplayMode | null;
       if (savedMode === 'touch' || savedMode === 'desktop') {
         setModeState(savedMode);
+        document.documentElement.classList.toggle('pos-touch-mode', savedMode === 'touch');
       }
 
       const savedTheme = window.localStorage.getItem(
@@ -57,6 +58,7 @@ export function UiModeProvider({ children }: { children: React.ReactNode }) {
     setModeState(newMode);
     try {
       window.localStorage.setItem(DISPLAY_STORAGE_KEY, newMode);
+      document.documentElement.classList.toggle('pos-touch-mode', newMode === 'touch');
     } catch {
       // ignore
     }

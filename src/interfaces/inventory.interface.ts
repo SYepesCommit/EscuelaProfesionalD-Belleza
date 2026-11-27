@@ -3,6 +3,7 @@ export interface ProductItem {
   barcode: string;
   sku: string;
   name: string;
+  description?: string | null;
   category: string;
   priceCop: number;
   costCop: number;
@@ -19,6 +20,7 @@ export interface CreateProductPayload {
   barcode: string;
   sku: string;
   name: string;
+  description?: string | null;
   category: string;
   priceCop: number;
   costCop: number;

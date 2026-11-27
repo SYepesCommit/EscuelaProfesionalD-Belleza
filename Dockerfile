@@ -48,4 +48,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "export DATABASE_URL=$(echo \"$DATABASE_URL\" | tr -d '[:space:]'); if [ -n \"$DATABASE_URL\" ]; then prisma db push --accept-data-loss || true; else echo 'WARN: DATABASE_URL is not set in environment'; fi && node server.js"]
+CMD ["sh", "-c", "DB_URL=$(env | grep -E 'postgresql://' | head -n 1 | cut -d= -f2- | tr -d '[:space:]'); if [ -n \"$DB_URL\" ]; then export DATABASE_URL=\"$DB_URL\"; echo 'DATABASE_URL auto-detected successfully'; prisma db push --accept-data-loss || true; else echo 'WARN: No postgresql:// URL found in environment'; fi && node server.js"]

@@ -18,7 +18,10 @@ export default function VentasPage() {
     isLoading: isLoadingSales,
     addProductToCart,
     removeFromCart,
+    updateCartQuantity,
+    clearCart,
     completeSale,
+    voidSale,
   } = useSalesAndPresales();
 
   if ((isLoadingInventory || isLoadingSales) && products.length === 0) {
@@ -47,8 +50,14 @@ export default function VentasPage() {
         sales={sales}
         onAddProduct={addProductToCart}
         onRemoveItem={removeFromCart}
+        onUpdateQuantity={updateCartQuantity}
+        onClearCart={clearCart}
         onCompleteSale={async (payload) => {
           await completeSale(payload);
+          await reloadInventory();
+        }}
+        onVoidSale={async (params) => {
+          await voidSale(params);
           await reloadInventory();
         }}
       />

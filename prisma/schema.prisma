@@ -357,6 +357,7 @@ model Product {
   barcode     String   @unique // Código de barras para escáner USB
   sku         String   @unique
   name        String
+  description String?
   category    String
   priceCop    Int
   costCop      Int      @default(0)
