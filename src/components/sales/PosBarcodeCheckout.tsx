@@ -266,32 +266,20 @@ export function PosBarcodeCheckout({
   const executeDrawerOpen = async (user: AuthorizedUserResult) => {
     try {
       setIsDrawerOpening(true);
-      const nowStr = formatDateTimeCo(new Date());
 
-      // 1. Enviar micro-pulso de impresión a la impresora térmica 80mm
-      // (La impresora recibe la orden y su puerto RJ11 dispara el pulso eléctrico de 24V que abre el cajón)
-      printThermalHtml(
-        'Pulso_Apertura_Gaveta_EPB',
-        `<div class="center" style="padding:2px 0;">
-          <div class="bold" style="font-size:11px;">*** APERTURA DE GAVETA POS ***</div>
-          <div style="font-size:10px;">Autorizado: ${user.fullName} (${user.role})</div>
-          <div style="font-size:9px;">${nowStr}</div>
-        </div>`
-      );
-
-      // 2. Registrar en auditoría forense
+      // Registrar apertura autorizada de gaveta en auditoría forense (sin lanzar ventana de impresión del navegador)
       const res = await fetch('/api/cash-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'DRAWER_OPEN',
           cashierCode: user.sellerSecretCode || user.userId,
-          reason: `Apertura física de gaveta vía pulso de impresora térmica por ${user.fullName} (${user.role})`,
+          reason: `Apertura manual de gaveta en terminal POS por ${user.fullName} (${user.role})`,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message);
-      setLastScannedNotice(`Pulso enviado a la impresora térmica: Gaveta abierta por ${user.fullName}`);
+      setLastScannedNotice(`Apertura de gaveta registrada por ${user.fullName}`);
     } catch (err) {
       setLastScannedNotice(
         err instanceof Error ? err.message : 'Error al abrir gaveta'

@@ -72,7 +72,14 @@ export async function createSystemUserRequest(
 
 export async function updateSystemUserAccessRequest(params: {
   targetUserId: string;
-  isActive: boolean;
+  isActive?: boolean;
+  fullName?: string;
+  documentId?: string;
+  role?: UserRoleType;
+  accessCode?: string;
+  sellerSecretCode?: string | null;
+  hourlyRateCop?: number;
+  commissionRatePct?: number;
   accessExpiresAt?: string | null;
   operatorUserId: string;
 }): Promise<void> {

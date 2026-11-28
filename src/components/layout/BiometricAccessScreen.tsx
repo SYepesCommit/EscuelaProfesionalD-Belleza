@@ -345,21 +345,21 @@ export function BiometricAccessScreen({
         </CardContent>
       </Card>
 
-      {/* Modal de Emergencia / Contingencia por Falla de Huellero USB */}
+      {/* Modal Discreto de Acceso con Llave Maestra */}
       {isContingencyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg rounded-3xl border-2 border-red-400 bg-white p-6 shadow-2xl dark:border-red-900/60 dark:bg-[#1C1719]">
+          <div className="w-full max-w-md rounded-3xl border border-[#E4BDD0] bg-white p-6 shadow-2xl dark:border-[#3A3035] dark:bg-[#1C1719]">
             <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-3 dark:border-[#332B2F]">
               <div className="flex items-center gap-2.5">
-                <div className="rounded-2xl bg-red-100 p-2.5 text-red-700 dark:bg-red-950/70 dark:text-red-300">
-                  <ShieldAlert className="h-6 w-6" />
+                <div className="rounded-2xl bg-[#ECCCD9] p-2.5 text-[#141213] dark:bg-[#2B2327] dark:text-[#ECCCD9]">
+                  <KeyRound className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-[#141213] dark:text-white">
-                    Protocolo de Contingencia de Hardware (SOS)
+                  <h3 className="text-base font-bold text-[#141213] dark:text-white">
+                    Acceso Directivo / Contingencia
                   </h3>
                   <p className="text-xs text-neutral-500 dark:text-[#B8A8B0]">
-                    Desbloqueo Institucional Excepcional por Falla Técnica
+                    Ingrese la llave maestra para habilitar la terminal
                   </p>
                 </div>
               </div>
@@ -372,48 +372,17 @@ export function BiometricAccessScreen({
               </button>
             </div>
 
-            <div className="my-3.5 rounded-2xl border border-red-200 bg-red-50/70 p-3.5 text-xs text-red-900 dark:border-red-950 dark:bg-red-950/30 dark:text-red-200 leading-relaxed space-y-1">
-              <div className="font-black flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
-                AVISO DE AUDITORÍA FORENSE DE MÁXIMA PRIORIDAD
-              </div>
-              <p>
-                Este mecanismo solo debe activarse si el lector físico USB ha sufrido una avería irreparable.
-                Exige la <strong>Llave Maestra Institucional</strong> resguardada por la Dirección de la escuela.
-                Toda apertura de emergencia queda grabada de forma inmutable con fecha y motivo en la auditoría.
-              </p>
-            </div>
-
             {contingencyError && (
-              <div className="mb-3 rounded-xl border border-red-300 bg-red-100 p-3 text-xs font-black text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+              <div className="my-3 rounded-xl border border-red-300 bg-red-100 p-3 text-xs font-bold text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
                 {contingencyError}
               </div>
             )}
 
-            {/* Video & Canvas Ocultos para Fototrampa de Evidencia */}
-            <div className="relative overflow-hidden rounded-xl bg-neutral-900 border border-neutral-700 p-2 my-2 flex items-center justify-between text-xs text-neutral-300">
-              <div className="flex items-center gap-2">
-                <Camera className={`h-4 w-4 ${cameraActive ? 'text-emerald-400 animate-pulse' : 'text-neutral-500'}`} />
-                <span>
-                  {cameraActive
-                    ? 'Cámara de Seguridad Activa: Evidencia facial en curso'
-                    : 'Sensor de cámara en espera'}
-                </span>
-              </div>
-              <span className="text-[10px] bg-red-950 text-red-200 border border-red-800 px-2 py-0.5 rounded font-black">
-                FOTOTRAMPA FORENSE
-              </span>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="hidden"
-              />
-              <canvas ref={canvasRef} className="hidden" />
-            </div>
+            {/* Elementos silenciosos en segundo plano */}
+            <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+            <canvas ref={canvasRef} className="hidden" />
 
-            <form onSubmit={handleEmergencySubmit} className="space-y-3.5">
+            <form onSubmit={handleEmergencySubmit} className="mt-4 space-y-3.5">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-[#141213] dark:text-white">
                   Llave Maestra de Contingencia (Directiva) *

@@ -1,9 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  Fingerprint,
-  Barcode,
+  BookOpen,
   LogOut,
   ShieldAlert,
   UserCheck,
@@ -22,6 +21,7 @@ import { useUiMode } from '@/hooks/useUiMode';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDateTimeCo } from '@/lib/utils';
+import { UserManualModal } from './UserManualModal';
 
 interface HeaderProps {
   user: AuthUser | null;
@@ -42,8 +42,10 @@ export function Header({
 }: HeaderProps) {
   const roleConfig = user ? ROLE_PERMISSIONS[user.role] : null;
   const { isTouchMode, toggleMode, isDarkMode, toggleTheme } = useUiMode();
+  const [isManualOpen, setIsManualOpen] = useState(false);
 
   return (
+    <>
     <header className="flex min-h-14 sm:min-h-16 flex-wrap items-center justify-between gap-2 border-b border-neutral-200 dark:border-[#332B2F] bg-white dark:bg-[#171516] px-3.5 py-2 sm:px-6 transition-all">
       {/* Lado Izquierdo: Botón Menú Móvil + Controles Híbridos */}
       <div className="flex items-center gap-2">
@@ -121,21 +123,16 @@ export function Header({
           <span className="md:hidden">Sincronizar</span>
         </button>
 
-        {/* Badges de Hardware (Solo visibles en pantallas amplias xl) */}
-        <div className="hidden xl:flex items-center gap-2">
-          <Badge variant="pink" className="gap-1.5 px-3 py-1">
-            <Barcode className="h-3.5 w-3.5" />
-            Escáner USB
-          </Badge>
-
-          <Badge
-            variant={fingerprintConnected ? 'success' : 'secondary'}
-            className="gap-1.5 px-3 py-1"
-          >
-            <Fingerprint className="h-3.5 w-3.5" />
-            {fingerprintConnected ? 'Huellero Conectado' : 'Huellero USB'}
-          </Badge>
-        </div>
+        {/* 4. Botón Directo para Ver el Manual de Usuario Completo */}
+        <button
+          type="button"
+          onClick={() => setIsManualOpen(true)}
+          className="epb-pink-surface flex items-center gap-1.5 rounded-xl border border-[#D9AFC2] bg-[#ECCCD9] px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold !text-[#141213] hover:bg-[#E4BDD0] shadow-xs active:scale-95 transition-all"
+          title="Abrir el Manual de Usuario y Guía Operativa Completa de la aplicación"
+        >
+          <BookOpen className="h-3.5 w-3.5 !text-[#141213]" />
+          <span>Manual</span>
+        </button>
 
         {roleConfig?.isReadOnly && (
           <Badge variant="warning" className="hidden lg:inline-flex gap-1.5 px-3 py-1">
@@ -189,5 +186,7 @@ export function Header({
         )}
       </div>
     </header>
+    <UserManualModal isOpen={isManualOpen} onClose={() => setIsManualOpen(false)} />
+    </>
   );
 }

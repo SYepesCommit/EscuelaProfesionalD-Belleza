@@ -22,7 +22,14 @@ const createUserSchema = z.object({
 
 const toggleUserSchema = z.object({
   targetUserId: z.string().min(1),
-  isActive: z.boolean(),
+  isActive: z.boolean().optional(),
+  fullName: z.string().min(3).optional(),
+  documentId: z.string().min(4).optional(),
+  role: z.enum(['ADMIN', 'ASESOR', 'VENTA', 'CONTABILIDAD', 'PROFESOR']).optional(),
+  accessCode: z.string().min(3).optional(),
+  sellerSecretCode: z.string().nullable().optional(),
+  hourlyRateCop: z.number().int().nonnegative().optional(),
+  commissionRatePct: z.number().nonnegative().optional(),
   accessExpiresAt: z.string().nullable().optional(),
   operatorUserId: z.string().min(1),
 });
@@ -154,8 +161,19 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { targetUserId, isActive, accessExpiresAt, operatorUserId } =
-      parsed.data;
+    const {
+      targetUserId,
+      isActive,
+      fullName,
+      documentId,
+      role,
+      accessCode,
+      sellerSecretCode,
+      hourlyRateCop,
+      commissionRatePct,
+      accessExpiresAt,
+      operatorUserId,
+    } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
       const prev = await tx.user.findUniqueOrThrow({
@@ -165,7 +183,27 @@ export async function PATCH(request: Request) {
       const user = await tx.user.update({
         where: { id: targetUserId },
         data: {
-          isActive,
+          ...(isActive !== undefined ? { isActive } : {}),
+          ...(fullName !== undefined ? { fullName: fullName.trim() } : {}),
+          ...(documentId !== undefined ? { documentId: documentId.trim() } : {}),
+          ...(role !== undefined
+            ? {
+                role,
+                isTemporaryGuest: role === 'CONTABILIDAD',
+              }
+            : {}),
+          ...(accessCode !== undefined
+            ? { accessCode: accessCode.trim().toUpperCase() }
+            : {}),
+          ...(sellerSecretCode !== undefined
+            ? {
+                sellerSecretCode: sellerSecretCode
+                  ? sellerSecretCode.trim().toUpperCase()
+                  : null,
+              }
+            : {}),
+          ...(hourlyRateCop !== undefined ? { hourlyRateCop } : {}),
+          ...(commissionRatePct !== undefined ? { commissionRatePct } : {}),
           ...(accessExpiresAt !== undefined
             ? {
                 accessExpiresAt: accessExpiresAt

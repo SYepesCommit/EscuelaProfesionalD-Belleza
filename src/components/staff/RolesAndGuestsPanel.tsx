@@ -6,13 +6,14 @@ import {
   Calculator,
   CheckCircle2,
   Clock,
-  Fingerprint,
+  Edit3,
   KeyRound,
   Power,
   Search,
   ShieldCheck,
   UserCheck,
   UserPlus,
+  X,
 } from 'lucide-react';
 import {
   CreateUserRolePayload,
@@ -43,7 +44,14 @@ interface RolesAndGuestsPanelProps {
   onCreateUser: (payload: CreateUserRolePayload) => Promise<void>;
   onUpdateAccess: (params: {
     targetUserId: string;
-    isActive: boolean;
+    isActive?: boolean;
+    fullName?: string;
+    documentId?: string;
+    role?: UserRoleType;
+    accessCode?: string;
+    sellerSecretCode?: string | null;
+    hourlyRateCop?: number;
+    commissionRatePct?: number;
     accessExpiresAt?: string | null;
     operatorUserId: string;
   }) => Promise<void>;
@@ -57,16 +65,23 @@ export function RolesAndGuestsPanel({
 }: RolesAndGuestsPanelProps) {
   const { isTouchMode } = useUiMode();
 
-  const [role, setRole] = useState<UserRoleType>('CONTABILIDAD');
+  // Estado de edición: null = Creando nuevo usuario; SystemUserItem = Editando existente
+  const [editingUser, setEditingUser] = useState<SystemUserItem | null>(null);
+
+  const [role, setRole] = useState<UserRoleType>('VENTA');
   const [documentId, setDocumentId] = useState('');
   const [fullName, setFullName] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [sellerSecretCode, setSellerSecretCode] = useState('');
+  // Modalidad de remuneración: 'HOURLY' (Por Hora) vs 'CONTRACT' (Por Contrato / Salario Fijo)
+  const [payScheme, setPayScheme] = useState<'HOURLY' | 'CONTRACT'>('HOURLY');
   const [hourlyRateCop, setHourlyRateCop] = useState('25000');
-  const [commissionRatePct, setCommissionRatePct] = useState('5');
+  const [commissionRatePct, setCommissionRatePct] = useState('0');
   const [guestDurationDays, setGuestDurationDays] = useState('7');
+
   const [roleFilter, setRoleFilter] = useState<'ALL' | UserRoleType>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -86,9 +101,43 @@ export function RolesAndGuestsPanel({
     });
   }, [users, roleFilter, searchQuery]);
 
+  const handleStartEdit = (user: SystemUserItem) => {
+    setEditingUser(user);
+    setRole(user.role);
+    setFullName(user.fullName);
+    setDocumentId(user.documentId);
+    setAccessCode(user.accessCode);
+    setSellerSecretCode(user.sellerSecretCode || '');
+    if (user.hourlyRateCop > 0) {
+      setPayScheme('HOURLY');
+      setHourlyRateCop(String(user.hourlyRateCop));
+    } else {
+      setPayScheme('CONTRACT');
+      setHourlyRateCop('0');
+    }
+    setCommissionRatePct(String(user.commissionRatePct ?? 0));
+    setFeedback(null);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUser(null);
+    setDocumentId('');
+    setFullName('');
+    setAccessCode('');
+    setSellerSecretCode('');
+    setPayScheme('HOURLY');
+    setHourlyRateCop('25000');
+    setCommissionRatePct('0');
+    setFeedback(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
+    setIsSubmitting(true);
 
     const isGuest = role === 'CONTABILIDAD';
     const expiresDate =
@@ -98,39 +147,77 @@ export function RolesAndGuestsPanel({
           ).toISOString()
         : null;
 
+    const effectiveAccessCode =
+      accessCode.trim().toUpperCase() ||
+      `${role.slice(0, 4)}-${documentId.trim().slice(-4) || '01'}`;
+
+    const effectiveHourlyCop =
+      isGuest || payScheme === 'CONTRACT' ? 0 : Math.max(0, Number(hourlyRateCop) || 0);
+
+    const effectiveCommissionPct = isGuest
+      ? 0
+      : Math.max(0, Number(commissionRatePct) || 0);
+
     try {
-      const generatedCode = `${role.slice(0, 4)}-${documentId.slice(-4) || '01'}`;
-      await onCreateUser({
-        documentId: documentId.trim(),
-        fullName: fullName.trim(),
-        role,
-        accessCode: generatedCode,
-        sellerSecretCode:
-          role === 'VENTA' || role === 'ASESOR'
-            ? (sellerSecretCode.trim() || `SEC-${documentId.slice(-4) || '01'}`).toUpperCase()
-            : undefined,
-        hourlyRateCop: Number(hourlyRateCop || 0),
-        commissionRatePct: Number(commissionRatePct || 0),
-        isTemporaryGuest: isGuest,
-        accessExpiresAt: expiresDate,
-        operatorUserId,
-      });
+      if (editingUser) {
+        await onUpdateAccess({
+          targetUserId: editingUser.id,
+          fullName: fullName.trim(),
+          documentId: documentId.trim(),
+          role,
+          accessCode: effectiveAccessCode,
+          sellerSecretCode:
+            role === 'VENTA' || role === 'ASESOR'
+              ? (sellerSecretCode.trim() || effectiveAccessCode).toUpperCase()
+              : null,
+          hourlyRateCop: effectiveHourlyCop,
+          commissionRatePct: effectiveCommissionPct,
+          accessExpiresAt: isGuest ? expiresDate : null,
+          operatorUserId,
+        });
+
+        setFeedback({
+          type: 'success',
+          text: `Datos y rol de ${fullName.trim()} actualizados correctamente.`,
+        });
+        setEditingUser(null);
+      } else {
+        await onCreateUser({
+          documentId: documentId.trim(),
+          fullName: fullName.trim(),
+          role,
+          accessCode: effectiveAccessCode,
+          sellerSecretCode:
+            role === 'VENTA' || role === 'ASESOR'
+              ? (sellerSecretCode.trim() || effectiveAccessCode).toUpperCase()
+              : undefined,
+          hourlyRateCop: effectiveHourlyCop,
+          commissionRatePct: effectiveCommissionPct,
+          isTemporaryGuest: isGuest,
+          accessExpiresAt: expiresDate,
+          operatorUserId,
+        });
+
+        setFeedback({
+          type: 'success',
+          text: isGuest
+            ? `Pase temporal de CONTABILIDAD habilitado por ${guestDurationDays} día(s).`
+            : `Usuario ${fullName.trim()} (${role}) creado con código ${effectiveAccessCode}.`,
+        });
+      }
 
       setDocumentId('');
       setFullName('');
       setAccessCode('');
       setSellerSecretCode('');
-      setFeedback({
-        type: 'success',
-        text: isGuest
-          ? `Pase temporal de CONTABILIDAD habilitado por ${guestDurationDays} día(s).`
-          : `Usuario con rol ${role} creado y auditado.`,
-      });
+      setCommissionRatePct('0');
     } catch (err) {
       setFeedback({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Error creando usuario',
+        text: err instanceof Error ? err.message : 'Error guardando usuario',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -171,16 +258,44 @@ export function RolesAndGuestsPanel({
         })}
       </div>
 
-      {/* 2. Formulario para Crear Usuario o Pase Contable Temporal */}
+      {/* 2. Formulario Estructurado para Crear o Editar Usuario */}
       <Card className="overflow-hidden border-[#E4BDD0] bg-white dark:border-[#332B2F] dark:bg-[#1B181A]">
         <CardHeader className="border-b border-[#E4BDD0]/60 bg-gradient-to-r from-[#ECCCD9]/50 to-[#FAF2F6] p-4 sm:p-5 dark:border-[#332B2F] dark:from-[#241E21] dark:to-[#1B181A]">
-          <CardTitle className="flex items-center gap-2 text-base font-bold text-[#141213] dark:text-[#F5EEF1]">
-            <UserPlus className="h-5 w-5 text-[#141213] dark:text-[#ECCCD9]" />
-            Crear Nuevo Usuario o Pase Temporal para Contabilidad / Invitado
-          </CardTitle>
-          <CardDescription className="text-xs text-neutral-600 dark:text-[#C4B5BC]">
-            Cuando elija el rol <strong>CONTABILIDAD</strong>, puede definir cuántos días durará activo su código de acceso antes de caducar automáticamente.
-          </CardDescription>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base font-bold text-[#141213] dark:text-[#F5EEF1]">
+                {editingUser ? (
+                  <>
+                    <Edit3 className="h-5 w-5 text-[#141213] dark:text-[#ECCCD9]" />
+                    <span>Editando Usuario: {editingUser.fullName}</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-5 w-5 text-[#141213] dark:text-[#ECCCD9]" />
+                    <span>Registrar Nuevo Usuario o Pase Temporal</span>
+                  </>
+                )}
+              </CardTitle>
+              <CardDescription className="text-xs text-neutral-600 dark:text-[#C4B5BC]">
+                {editingUser
+                  ? 'Modifique el rol, nombre, documento, código/PIN de acceso, modalidad de pago o comisión.'
+                  : 'Configure el perfil, su PIN/Código de acceso, modalidad de pago (Por Hora o Por Contrato) y comisión opcional.'}
+              </CardDescription>
+            </div>
+
+            {editingUser && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                className="h-8 gap-1 text-xs font-bold"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancelar Edición
+              </Button>
+            )}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4 p-4 sm:p-5">
@@ -210,146 +325,223 @@ export function RolesAndGuestsPanel({
             </div>
           )}
 
-          <form
-            onSubmit={handleSubmit}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                Rol en el Sistema *
-              </Label>
-              <select
-                className="flex h-10 w-full rounded-xl border border-neutral-300 bg-white px-3 text-xs font-bold text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                value={role}
-                onChange={(e) => setRole(e.target.value as UserRoleType)}
-              >
-                <option value="CONTABILIDAD">
-                  CONTABILIDAD / INVITADO (Temporal Solo Lectura)
-                </option>
-                <option value="ASESOR">
-                  ASESOR (Agenda, Alumnos, Multas, Asistencia, Preventas)
-                </option>
-                <option value="VENTA">
-                  VENTA (Inventario, Preventas, Caja POS, Comisiones)
-                </option>
-                <option value="PROFESOR">
-                  PROFESOR (Salones y Reloj Biométrico)
-                </option>
-                <option value="ADMIN">ADMIN (Control Total)</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                Nombre Completo *
-              </Label>
-              <Input
-                placeholder="Ej: Lic. Martha Lucía Pineda"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                Cédula / Documento *
-              </Label>
-              <Input
-                placeholder="Ej: 1020304050"
-                value={documentId}
-                onChange={(e) => setDocumentId(e.target.value)}
-                className="border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1] flex items-center gap-1">
-                <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
-                Huella Dactilar Requerida *
-              </Label>
-              <div className="flex items-center justify-between rounded-xl border border-emerald-300 bg-emerald-50/70 px-3 py-2 text-xs dark:border-emerald-800 dark:bg-emerald-950/30">
-                <span className="font-mono text-emerald-900 font-bold dark:text-emerald-300">
-                  {documentId ? `FP_${role}_${documentId.trim()}` : 'Enrolar Sensor USB'}
-                </span>
-                <Badge variant="success" className="text-[10px] font-bold">
-                  Biometría Criptográfica
-                </Badge>
-              </div>
-            </div>
-
-            {(role === 'VENTA' || role === 'ASESOR') && (
-              <div className="space-y-1">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* FILA 1: Identificación y Rol (4 columnas perfectamente alineadas) */}
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 items-end">
+              <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                  Código Secreto Comercial (Preventas / Caja)
-                </Label>
-                <Input
-                  placeholder="Ej: MARTHA-999"
-                  value={sellerSecretCode}
-                  onChange={(e) =>
-                    setSellerSecretCode(e.target.value.toUpperCase())
-                  }
-                  className="font-mono border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                />
-              </div>
-            )}
-
-            {role === 'CONTABILIDAD' ? (
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                  Vigencia del Pase Temporal (Días)
+                  1. Rol en el Sistema *
                 </Label>
                 <select
-                  className="flex h-10 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-extrabold text-amber-950 dark:border-amber-500/50 dark:bg-amber-950/60 dark:text-amber-100"
-                  value={guestDurationDays}
-                  onChange={(e) => setGuestDurationDays(e.target.value)}
+                  className="flex h-10 w-full rounded-xl border border-neutral-300 bg-white px-3 text-xs font-bold text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as UserRoleType)}
                 >
-                  <option value="1">24 Horas (1 Día de Auditoría Contable)</option>
-                  <option value="3">3 Días (Cierre Contable)</option>
-                  <option value="7">7 Días (1 Semana)</option>
-                  <option value="15">15 Días (Quincena)</option>
-                  <option value="30">30 Días (Mes Completo)</option>
+                  <option value="VENTA">VENTA (Caja POS & Preventas)</option>
+                  <option value="ASESOR">ASESOR (Recepción & Alumnas)</option>
+                  <option value="PROFESOR">PROFESOR (Salones & Asistencia)</option>
+                  <option value="ADMIN">ADMIN (Dirección General)</option>
+                  <option value="CONTABILIDAD">CONTABILIDAD (Invitado Lectura)</option>
                 </select>
               </div>
-            ) : (
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
-                  Valor Hora (COP) / % Comisión
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Hora COP"
-                    value={hourlyRateCop}
-                    onChange={(e) => setHourlyRateCop(e.target.value)}
-                    className="border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                  />
-                  <Input
-                    type="number"
-                    placeholder="% Com"
-                    value={commissionRatePct}
-                    onChange={(e) => setCommissionRatePct(e.target.value)}
-                    className="border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
-                  />
-                </div>
-              </div>
-            )}
 
-            <div className="sm:col-span-2 lg:col-span-3 flex justify-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                  2. Nombre Completo *
+                </Label>
+                <Input
+                  placeholder="Ej: Laura Ríos Gómez"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="h-10 text-xs border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                  3. Cédula / Documento *
+                </Label>
+                <Input
+                  placeholder="Ej: 1020304050"
+                  value={documentId}
+                  onChange={(e) => setDocumentId(e.target.value)}
+                  className="h-10 text-xs font-mono border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                    4. PIN / Código de Acceso
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAccessCode(
+                        `${role.slice(0, 4)}-${documentId.trim().slice(-4) || '01'}`
+                      )
+                    }
+                    className="text-[10px] font-bold text-[#7A1E46] hover:underline dark:text-[#ECCCD9]"
+                  >
+                    Auto-generar
+                  </button>
+                </div>
+                <Input
+                  placeholder="Ej: LAURA-01 (o automático)"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
+                  className="h-10 text-xs font-mono font-bold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#221D20] dark:text-white"
+                />
+              </div>
+            </div>
+
+            {/* FILA 2: Condiciones de Pago, Contrato/Hora y Comisión Opcional */}
+            <div className="rounded-2xl border border-[#E4BDD0] bg-[#FAF3F6]/70 p-4 dark:border-[#332B2F] dark:bg-[#201B1E]">
+              {role === 'CONTABILIDAD' ? (
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 items-end">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                      Vigencia del Pase Temporal de Contabilidad (Días)
+                    </Label>
+                    <select
+                      className="flex h-10 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-extrabold text-amber-950 dark:border-amber-500/50 dark:bg-amber-950/60 dark:text-amber-100"
+                      value={guestDurationDays}
+                      onChange={(e) => setGuestDurationDays(e.target.value)}
+                    >
+                      <option value="1">24 Horas (1 Día de Auditoría Contable)</option>
+                      <option value="3">3 Días (Cierre Contable)</option>
+                      <option value="7">7 Días (1 Semana)</option>
+                      <option value="15">15 Días (Quincena)</option>
+                      <option value="30">30 Días (Mes Completo)</option>
+                    </select>
+                  </div>
+                  <div className="text-xs text-neutral-600 dark:text-[#B8A9B1] pb-2">
+                    El perfil de Contabilidad es de <strong>Solo Lectura</strong> y no liquida horas ni comisiones de venta.
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 items-end">
+                  {/* Decisión: Pago por Hora vs Por Contrato */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                      Modalidad de Vinculación
+                    </Label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPayScheme('HOURLY')}
+                        className={`h-10 rounded-xl border px-2.5 text-xs font-bold transition ${
+                          payScheme === 'HOURLY'
+                            ? 'border-[#141213] bg-[#141213] text-[#ECCCD9] dark:border-[#ECCCD9] dark:bg-[#ECCCD9] dark:!text-[#141213]'
+                            : 'border-[#D9AFC2] bg-white text-[#141213] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white'
+                        }`}
+                      >
+                        Por Hora
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayScheme('CONTRACT');
+                          setHourlyRateCop('0');
+                        }}
+                        className={`h-10 rounded-xl border px-2.5 text-xs font-bold transition ${
+                          payScheme === 'CONTRACT'
+                            ? 'border-[#141213] bg-[#141213] text-[#ECCCD9] dark:border-[#ECCCD9] dark:bg-[#ECCCD9] dark:!text-[#141213]'
+                            : 'border-[#D9AFC2] bg-white text-[#141213] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white'
+                        }`}
+                      >
+                        Por Contrato
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Valor Hora o Indicador de Contrato */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                      {payScheme === 'HOURLY'
+                        ? 'Valor de la Hora (COP)'
+                        : 'Esquema por Contrato Fijo'}
+                    </Label>
+                    {payScheme === 'HOURLY' ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        placeholder="Ej: 25000"
+                        value={hourlyRateCop}
+                        onChange={(e) => setHourlyRateCop(e.target.value)}
+                        className="h-10 text-xs font-bold border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                      />
+                    ) : (
+                      <div className="flex h-10 items-center rounded-xl border border-[#D9AFC2] bg-white px-3 text-xs font-semibold text-neutral-600 dark:border-[#3A3035] dark:bg-[#161315] dark:text-[#C7B8C0]">
+                        Salario / Contrato Fijo ($0/hora)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* % Comisión de Ventas (100% Opcional) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                      % Comisión Ventas (Opcional)
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      placeholder="0 (Opcional)"
+                      value={commissionRatePct}
+                      onChange={(e) => setCommissionRatePct(e.target.value)}
+                      className="h-10 text-xs border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                    />
+                  </div>
+
+                  {/* Código Secreto Comercial Opcional */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-[#141213] dark:text-[#F5EEF1]">
+                      Cód. Preventas (Opcional)
+                    </Label>
+                    <Input
+                      placeholder="Igual al PIN si se deja vacío"
+                      value={sellerSecretCode}
+                      onChange={(e) => setSellerSecretCode(e.target.value.toUpperCase())}
+                      className="h-10 text-xs font-mono border-neutral-300 bg-white text-[#141213] dark:border-[#3A3035] dark:bg-[#161315] dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              {editingUser && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  className="h-10 px-4 text-xs font-bold"
+                >
+                  Cancelar
+                </Button>
+              )}
               <Button
                 type="submit"
                 variant="pink"
+                disabled={isSubmitting}
                 className={`gap-1.5 bg-[#ECCCD9] font-extrabold text-[#141213] hover:bg-[#E4BDD0] ${
-                  isTouchMode ? 'h-12 px-5 text-sm' : 'h-10 px-4 text-xs'
+                  isTouchMode ? 'h-12 px-5 text-sm' : 'h-10 px-5 text-xs'
                 }`}
               >
                 <KeyRound className="h-4 w-4" />
                 <span>
-                  {role === 'CONTABILIDAD'
-                    ? 'Habilitar Acceso Temporal de Contabilidad'
-                    : 'Crear Usuario con Rol'}
+                  {isSubmitting
+                    ? 'Guardando...'
+                    : editingUser
+                    ? 'Guardar Cambios del Usuario'
+                    : role === 'CONTABILIDAD'
+                    ? 'Habilitar Pase Temporal de Contabilidad'
+                    : 'Registrar Usuario'}
                 </span>
               </Button>
             </div>
@@ -419,7 +611,11 @@ export function RolesAndGuestsPanel({
                         {u.fullName}
                       </div>
                       <div className="text-neutral-500 dark:text-[#B8A8B0]">
-                        CC: {u.documentId} &bull; Hora: {formatCop(u.hourlyRateCop)}
+                        CC: {u.documentId} &bull;{' '}
+                        {u.hourlyRateCop > 0
+                          ? `Hora: ${formatCop(u.hourlyRateCop)}`
+                          : 'Por Contrato'}
+                        {u.commissionRatePct > 0 ? ` • Com: ${u.commissionRatePct}%` : ''}
                       </div>
                     </div>
 
@@ -434,16 +630,22 @@ export function RolesAndGuestsPanel({
 
                   <div className="rounded-xl border border-neutral-200 bg-[#FAF7F9] p-2.5 font-mono dark:border-[#332B2F] dark:bg-[#221D20]">
                     <div className="flex items-center justify-between">
-                      <span className="text-neutral-500 text-[11px]">Identificador Sistema:</span>
+                      <span className="text-neutral-500 text-[11px]">PIN / Código Acceso:</span>
                       <strong>{u.accessCode}</strong>
-                    </div>
-                    <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                      <Fingerprint className="h-3.5 w-3.5" />
-                      <span>{u.hasFingerprint ? 'Huella Enrolada en USB' : 'Huella Pendiente'}</span>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleStartEdit(u)}
+                      className="text-xs font-bold"
+                    >
+                      <Edit3 className="mr-1 h-3.5 w-3.5" />
+                      Editar
+                    </Button>
                     {u.role === 'CONTABILIDAD' && (
                       <Button
                         type="button"
@@ -479,7 +681,7 @@ export function RolesAndGuestsPanel({
                       className="text-xs font-bold dark:border-[#3A3035] dark:bg-[#252023] dark:text-white"
                     >
                       <Power className="h-3.5 w-3.5" />
-                      {u.isActive ? 'Revocar Acceso' : 'Reactivar'}
+                      {u.isActive ? 'Revocar' : 'Reactivar'}
                     </Button>
                   </div>
                 </div>
@@ -499,16 +701,16 @@ export function RolesAndGuestsPanel({
                     Rol Asignado
                   </TableHead>
                   <TableHead className="font-bold text-[#141213] dark:text-[#ECCCD9]">
-                    Autenticación Biométrica
+                    PIN / Código Acceso
                   </TableHead>
                   <TableHead className="font-bold text-[#141213] dark:text-[#ECCCD9]">
-                    Vigencia / Expiración
+                    Modalidad & Comisión
                   </TableHead>
                   <TableHead className="font-bold text-[#141213] dark:text-[#ECCCD9]">
                     Estado
                   </TableHead>
                   <TableHead className="text-right font-bold text-[#141213] dark:text-[#ECCCD9]">
-                    Control de Acceso
+                    Acciones
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -529,8 +731,7 @@ export function RolesAndGuestsPanel({
                           {u.fullName}
                         </div>
                         <div className="text-xs text-neutral-500 dark:text-[#B8A8B0]">
-                          CC: {u.documentId} &bull; Hora:{' '}
-                          {formatCop(u.hourlyRateCop)}
+                          CC: {u.documentId}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -541,20 +742,21 @@ export function RolesAndGuestsPanel({
                         </span>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                          <Fingerprint className="h-4 w-4 shrink-0" />
-                          <span>{u.hasFingerprint ? 'Huella Activa' : 'Sin Enrolar'}</span>
+                        <div className="font-mono text-xs font-bold text-[#141213] dark:text-white">
+                          {u.accessCode}
                         </div>
-                        <div className="font-mono text-[10px] text-neutral-400 dark:text-neutral-500">
-                          Ref: {u.accessCode}
-                        </div>
+                        {u.sellerSecretCode && (
+                          <div className="font-mono text-[10px] text-neutral-500">
+                            Preventa: {u.sellerSecretCode}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {u.isTemporaryGuest && u.accessExpiresAt ? (
                           <div className="space-y-0.5 text-xs">
                             <div className="flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300">
                               <Calculator className="h-3.5 w-3.5" />
-                              Pase Contable Temporal
+                              Pase Temporal
                             </div>
                             <div className="flex items-center gap-1 text-[11px] text-neutral-500 dark:text-[#B8A8B0]">
                               <Clock className="h-3 w-3" />
@@ -562,9 +764,16 @@ export function RolesAndGuestsPanel({
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-neutral-500 dark:text-[#B8A8B0]">
-                            Permanente (Planta)
-                          </span>
+                          <div className="text-xs">
+                            <div className="font-bold text-[#141213] dark:text-white">
+                              {u.hourlyRateCop > 0
+                                ? `Por Hora: ${formatCop(u.hourlyRateCop)}/h`
+                                : 'Por Contrato Fijo'}
+                            </div>
+                            <div className="text-[11px] text-neutral-500 dark:text-[#B8A8B0]">
+                              Comisión: {u.commissionRatePct > 0 ? `${u.commissionRatePct}%` : 'No aplica (0%)'}
+                            </div>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell>
@@ -581,6 +790,17 @@ export function RolesAndGuestsPanel({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleStartEdit(u)}
+                            className="h-8 gap-1 text-xs font-bold border-[#D9AFC2] hover:bg-[#FAF0F5] dark:border-[#3A3035] dark:bg-[#252023] dark:text-white"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+
                           {u.role === 'CONTABILIDAD' && (
                             <Button
                               type="button"
@@ -598,7 +818,7 @@ export function RolesAndGuestsPanel({
                                 })
                               }
                             >
-                              Renovar +7 Días
+                              Renovar +7d
                             </Button>
                           )}
 

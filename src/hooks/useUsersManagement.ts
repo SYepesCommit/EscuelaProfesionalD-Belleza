@@ -44,7 +44,14 @@ export function useUsersManagement() {
   const updateUserAccess = useCallback(
     async (params: {
       targetUserId: string;
-      isActive: boolean;
+      isActive?: boolean;
+      fullName?: string;
+      documentId?: string;
+      role?: 'ADMIN' | 'ASESOR' | 'VENTA' | 'CONTABILIDAD' | 'PROFESOR';
+      accessCode?: string;
+      sellerSecretCode?: string | null;
+      hourlyRateCop?: number;
+      commissionRatePct?: number;
       accessExpiresAt?: string | null;
       operatorUserId: string;
     }) => {
